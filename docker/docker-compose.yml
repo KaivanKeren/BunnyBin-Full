@@ -1,0 +1,45 @@
+# Compose DEV — hanya dependensi lokal (database) untuk pengembangan backend.
+# Compose produksi full-stack (Fase 8) akan berada di root repo sesuai
+# docs/PRD-Infrastructure-Deployment.md §2; nama project dibedakan agar tidak bentrok.
+#
+#   docker compose -f docker/docker-compose.yml up -d
+#   docker compose -f docker/docker-compose.yml --profile test up -d postgres-plain
+#
+# backend-laravel/.env default menunjuk ke timescaledb ini (127.0.0.1:5433).
+name: bunnybin-dev
+
+services:
+  timescaledb:
+    image: timescale/timescaledb:latest-pg15
+    environment:
+      POSTGRES_DB: bunnybin
+      POSTGRES_USER: bunnybin
+      POSTGRES_PASSWORD: bunnybin
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata-dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bunnybin -d bunnybin"]
+      interval: 10s
+      retries: 5
+
+  # Postgres tanpa TimescaleDB — untuk menguji guard migration (PRD-Database.md §7:
+  # migration harus tetap sukses tanpa extension). Jalankan dengan --profile test:
+  #   DB_PORT=5435 php artisan migrate:fresh
+  postgres-plain:
+    image: postgres:15-alpine
+    profiles: [test]
+    environment:
+      POSTGRES_DB: bunnybin
+      POSTGRES_USER: bunnybin
+      POSTGRES_PASSWORD: bunnybin
+    ports:
+      - "5435:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bunnybin -d bunnybin"]
+      interval: 10s
+      retries: 5
+
+volumes:
+  pgdata-dev:
