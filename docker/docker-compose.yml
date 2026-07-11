@@ -24,6 +24,13 @@ services:
       interval: 10s
       retries: 5
 
+  mosquitto:
+    image: eclipse-mosquitto:2
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+
   # Postgres tanpa TimescaleDB — untuk menguji guard migration (PRD-Database.md §7:
   # migration harus tetap sukses tanpa extension). Jalankan dengan --profile test:
   #   DB_PORT=5435 php artisan migrate:fresh

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToSchoolScope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -31,6 +32,24 @@ class Unit extends Model
             'last_seen_at' => 'datetime',
             'installed_at' => 'date',
         ];
+    }
+
+    /**
+     * Subquery per kolom, bukan eager load seluruh snapshot — hindari N+1
+     * di tabel time-series yang barisnya jutaan.
+     */
+    public function scopeWithLatestFill(Builder $query): Builder
+    {
+        $latest = fn (string $column) => FillSnapshot::select($column)
+            ->whereColumn('unit_id', 'units.id')
+            ->orderByDesc('recorded_at')
+            ->limit(1);
+
+        return $query->addSelect([
+            'latest_organic_pct' => $latest('organic_pct'),
+            'latest_inorganic_pct' => $latest('inorganic_pct'),
+            'latest_recorded_at' => $latest('recorded_at'),
+        ]);
     }
 
     public function school(): BelongsTo
