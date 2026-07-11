@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+pydantic-settings
+pillow
+python-multipart
+# real mode (uncomment saat model siap):
+# ultralytics
+# opencv-python-headless

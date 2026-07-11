@@ -24,6 +24,15 @@ services:
       interval: 10s
       retries: 5
 
+  # Dev: port dipublish ke host (127.0.0.1:8800) karena Laravel jalan di host.
+  # Produksi (Fase 8): internal-only via expose, tanpa publish.
+  cv-service:
+    build: ../cv-service-fastapi
+    environment:
+      CV_MODE: dummy
+    ports:
+      - "127.0.0.1:8800:8000"
+
   mosquitto:
     image: eclipse-mosquitto:2
     ports:

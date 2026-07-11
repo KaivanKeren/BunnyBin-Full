@@ -19,5 +19,8 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
+        $exceptions->render(fn (\App\Exceptions\CvServiceUnavailableException $e) => response()->json(
+            ['error' => 'cv_unavailable'],
+            503,
+        ));
     })->create();

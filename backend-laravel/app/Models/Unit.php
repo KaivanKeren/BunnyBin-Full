@@ -3,15 +3,20 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToSchoolScope;
+use Illuminate\Auth\Authenticatable;
+use Illuminate\Contracts\Auth\Authenticatable as AuthenticatableContract;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Laravel\Sanctum\HasApiTokens;
 
-class Unit extends Model
+class Unit extends Model implements AuthenticatableContract
 {
-    use BelongsToSchoolScope, HasFactory;
+    // Authenticatable + HasApiTokens: kiosk di tiap bin autentikasi pakai
+    // token unit (ability 'kiosk') via guard Sanctum, bukan akun admin.
+    use Authenticatable, BelongsToSchoolScope, HasApiTokens, HasFactory;
 
     public const STATUS_ACTIVE = 'active';
     public const STATUS_MAINTENANCE = 'maintenance';

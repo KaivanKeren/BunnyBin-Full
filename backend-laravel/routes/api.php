@@ -2,12 +2,16 @@
 
 use App\Http\Controllers\Api\AlertController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\CvProxyController;
 use App\Http\Controllers\Api\QuizItemController;
 use App\Http\Controllers\Api\SchoolController;
 use App\Http\Controllers\Api\UnitController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/auth/login', [AuthController::class, 'login']);
+
+// Dipanggil kiosk/device dengan token unit (ability kiosk), bukan session admin.
+Route::post('/cv/classify', [CvProxyController::class, 'classify'])->middleware('auth:sanctum');
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/auth/logout', [AuthController::class, 'logout']);
