@@ -41,6 +41,8 @@ class UnitController extends Controller
             ->withLatestFill()
             ->findOrFail($unit);
 
+        $unit->load(['maintenanceEvents' => fn ($q) => $q->latest()->limit(10)]);
+
         return new UnitResource($unit);
     }
 

@@ -12,6 +12,10 @@ class SortLogResource extends JsonResource
         return [
             'id' => $this->id,
             'unit_id' => $this->unit_id,
+            'unit' => $this->whenLoaded('unit', fn () => [
+                'id' => $this->unit->id,
+                'code' => $this->unit->code,
+            ]),
             'quiz_item' => $this->whenLoaded('quizItem', fn () => $this->quizItem ? [
                 'id' => $this->quizItem->id,
                 'item_name' => $this->quizItem->item_name,

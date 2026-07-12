@@ -26,6 +26,14 @@ class UnitResource extends JsonResource
                 'inorganic_pct' => (int) $this->latest_inorganic_pct,
                 'recorded_at' => Carbon::parse($this->latest_recorded_at),
             ] : null,
+            'maintenance_events' => $this->whenLoaded('maintenanceEvents',
+                fn () => $this->maintenanceEvents->map(fn ($event) => [
+                    'id' => $event->id,
+                    'event_type' => $event->event_type,
+                    'note' => $event->note,
+                    'resolved' => $event->resolved,
+                    'created_at' => $event->created_at,
+                ])),
         ];
     }
 }
