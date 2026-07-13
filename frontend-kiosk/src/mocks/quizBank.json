@@ -1,0 +1,22 @@
+[
+  { "id": 1, "category": "organic", "item_name": "Kulit Pisang", "image_url": null, "explanation": "Kulit pisang adalah sampah organik dari buah. Bisa diolah jadi kompos yang menyuburkan tanaman!", "active": true },
+  { "id": 2, "category": "organic", "item_name": "Daun Kering", "image_url": null, "explanation": "Daun kering berasal dari tumbuhan, jadi termasuk sampah organik. Bisa membusuk dan jadi pupuk alami.", "active": true },
+  { "id": 3, "category": "organic", "item_name": "Sisa Roti", "image_url": null, "explanation": "Sisa makanan seperti roti adalah sampah organik. Jangan buang sembarangan, bisa jadi kompos ya!", "active": true },
+  { "id": 4, "category": "organic", "item_name": "Kulit Apel", "image_url": null, "explanation": "Kulit apel berasal dari buah, jadi sampah organik. Mudah membusuk dan ramah lingkungan.", "active": true },
+  { "id": 5, "category": "organic", "item_name": "Sisa Sayur", "image_url": null, "explanation": "Sisa sayur adalah sampah organik dari tumbuhan. Bisa dijadikan kompos untuk kebun!", "active": true },
+  { "id": 6, "category": "organic", "item_name": "Ampas Kopi", "image_url": null, "explanation": "Ampas kopi termasuk sampah organik. Bahkan bisa dipakai sebagai pupuk tanaman lho!", "active": true },
+  { "id": 7, "category": "organic", "item_name": "Kulit Jeruk", "image_url": null, "explanation": "Kulit jeruk berasal dari buah, jadi sampah organik. Wanginya segar dan mudah terurai.", "active": true },
+  { "id": 8, "category": "organic", "item_name": "Nasi Sisa", "image_url": null, "explanation": "Nasi sisa adalah sampah organik dari makanan. Bisa membusuk dan diolah jadi kompos.", "active": true },
+  { "id": 9, "category": "organic", "item_name": "Cangkang Telur", "image_url": null, "explanation": "Cangkang telur termasuk sampah organik. Kalau dihancurkan bisa jadi pupuk yang bagus!", "active": true },
+  { "id": 10, "category": "organic", "item_name": "Ranting Kecil", "image_url": null, "explanation": "Ranting dari pohon adalah sampah organik. Lama-lama akan membusuk secara alami.", "active": true },
+  { "id": 11, "category": "inorganic", "item_name": "Botol Plastik", "image_url": null, "explanation": "Botol plastik adalah sampah anorganik. Bisa didaur ulang jadi barang baru, jangan dibuang ke sungai ya!", "active": true },
+  { "id": 12, "category": "inorganic", "item_name": "Kaleng Soda", "image_url": null, "explanation": "Kaleng terbuat dari logam, jadi sampah anorganik. Bisa didaur ulang berkali-kali!", "active": true },
+  { "id": 13, "category": "inorganic", "item_name": "Kertas Bekas", "image_url": null, "explanation": "Kertas bekas termasuk sampah anorganik yang bisa didaur ulang jadi kertas baru.", "active": true },
+  { "id": 14, "category": "inorganic", "item_name": "Kantong Plastik", "image_url": null, "explanation": "Kantong plastik adalah sampah anorganik yang sulit terurai. Yuk kurangi pakainya!", "active": true },
+  { "id": 15, "category": "inorganic", "item_name": "Sedotan", "image_url": null, "explanation": "Sedotan plastik termasuk sampah anorganik. Lebih baik pakai sedotan yang bisa dipakai ulang.", "active": true },
+  { "id": 16, "category": "inorganic", "item_name": "Tutup Botol", "image_url": null, "explanation": "Tutup botol dari plastik atau logam adalah sampah anorganik. Bisa dikumpulkan untuk didaur ulang.", "active": true },
+  { "id": 17, "category": "inorganic", "item_name": "Gelas Plastik", "image_url": null, "explanation": "Gelas plastik sekali pakai adalah sampah anorganik. Buang di tempat sampah anorganik ya!", "active": true },
+  { "id": 18, "category": "inorganic", "item_name": "Koran Bekas", "image_url": null, "explanation": "Koran bekas termasuk sampah anorganik yang bisa didaur ulang jadi kertas lagi.", "active": true },
+  { "id": 19, "category": "inorganic", "item_name": "Kaca Pecah", "image_url": null, "explanation": "Pecahan kaca adalah sampah anorganik. Hati-hati, dan buang di tempat yang benar!", "active": true },
+  { "id": 20, "category": "inorganic", "item_name": "Bungkus Snack", "image_url": null, "explanation": "Bungkus snack terbuat dari plastik, jadi sampah anorganik. Sulit terurai, jangan dibuang sembarangan.", "active": true }
+]

@@ -1,0 +1,56 @@
+@import "tailwindcss";
+
+/* Design token kiosk — porting 1:1 dari tailwind.config.js prototype (/mnt/Projects/BunnyBin).
+   Tailwind v4: token didefinisikan di @theme, jadi utility spt bg-organic-400 / shadow-pop / font-round tergenerate. */
+@theme {
+  --font-round: "Fredoka", "Quicksand", ui-sans-serif, system-ui, sans-serif;
+
+  --color-canvas: #fff8f0;
+
+  --color-organic-50: #f0faf0;
+  --color-organic-100: #d7f0d7;
+  --color-organic-200: #b4e3b4;
+  --color-organic-300: #86cf86;
+  --color-organic-400: #5cb85c;
+  --color-organic-500: #3fa13f;
+
+  --color-inorganic-50: #eff6ff;
+  --color-inorganic-100: #d6e8fb;
+  --color-inorganic-200: #a8cef5;
+  --color-inorganic-300: #7bb3ee;
+  --color-inorganic-400: #5499e6;
+  --color-inorganic-500: #3b7cc9;
+
+  --color-bunny-fur: #fff7ee;
+  --color-bunny-shadow: #f2dfcb;
+  --color-bunny-cheek: #ffb6b6;
+  --color-bunny-nose: #f4a1a1;
+
+  --shadow-soft: 0 10px 30px rgba(0, 0, 0, 0.08);
+  --shadow-pop: 0 8px 0 rgba(0, 0, 0, 0.08);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-round);
+  background: linear-gradient(135deg, #fff8f0 0%, #ffeede 100%);
+  color: #3a2f29;
+  overflow: hidden;
+  /* Kiosk: blokir gesture navigasi browser (UI-08) */
+  overscroll-behavior: none;
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.no-select {
+  -webkit-user-select: none;
+  user-select: none;
+}
