@@ -142,8 +142,7 @@ BunnyBin-V2/
 ├── docker/
 │   ├── docker-compose.yml      # dependensi DEV: TimescaleDB, Mosquitto, CV service
 │   └── mosquitto/mosquitto.conf
-│
-└── docs/                       # PRD lengkap tiap komponen
+
 ```
 
 ---
@@ -428,21 +427,5 @@ pytest
 
 **Uji ingestion tanpa hardware:** gunakan `php artisan simulate:devices` (lihat [§7](#7-menjalankan-tanpa-hardware-mode-simulasi)) atau `mosquitto_pub` CLI untuk mem-publish pesan MQTT manual.
 
----
-
-## 13. Dokumentasi Lanjutan
-
-PRD lengkap tiap komponen ada di folder [`docs/`](docs/):
-
-| Dokumen | Isi |
-|---|---|
-| `PRD-Webapp-FullStack.md` | Spesifikasi menyeluruh web app (arsitektur, DB, API, roadmap) |
-| `PRD-Backend-Laravel.md` | Detail backend Laravel |
-| `PRD-CV-Service-FastAPI.md` | Detail layanan CV |
-| `PRD-Database.md` | Skema database & strategi TimescaleDB |
-| `PRD-Frontend.md` / `PRD-Frontend-Admin.md` | Detail kiosk & dashboard admin |
-| `PRD-Infrastructure-Deployment.md` | Rencana deployment & Docker Compose produksi |
-
----
 
 <sub>Dibuat untuk mendukung program pemilahan & edukasi sampah di sekolah. 🐰🗑️</sub>
