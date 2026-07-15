@@ -72,9 +72,26 @@ class ProcessSensorReading implements ShouldQueue
             return;
         }
 
-        // Sortir dari CV device-side: tanpa quiz_item, is_correct tidak diketahui.
+        // Mode kuis (kiosk anak): payload menyertakan quiz_item_id → sortiran bisa
+        // dinilai benar/salah. Tanpa quiz_item (CV device-side murni), is_correct null.
+        $quizItemId = $this->payload['quiz_item_id'] ?? null;
+        $quizItem = $quizItemId !== null ? QuizItem::find($quizItemId) : null;
+
+        $isCorrect = match (true) {
+            array_key_exists('is_correct', $this->payload) => (bool) $this->payload['is_correct'],
+            $quizItem !== null => $category === $quizItem->category,
+            default => null,
+        };
+
+        $confidence = isset($this->payload['confidence']) && is_numeric($this->payload['confidence'])
+            ? (float) $this->payload['confidence']
+            : null;
+
         $unit->sortLogs()->create([
+            'quiz_item_id' => $quizItem?->id,
             'category_detected' => $category,
+            'confidence' => $confidence,
+            'is_correct' => $isCorrect,
             'created_at' => $this->timestamp(),
         ]);
     }

@@ -19,7 +19,11 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => [env('FRONTEND_URL', 'http://localhost:5173')],
+    'allowed_origins' => array_values(array_unique(array_filter([
+        env('FRONTEND_URL', 'http://localhost:5173'),
+        'http://localhost:5173', // frontend admin
+        'http://localhost:5174', // frontend kiosk
+    ]))),
 
     'allowed_origins_patterns' => [],
 
