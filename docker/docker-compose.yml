@@ -32,6 +32,19 @@ services:
       CV_MODE: dummy
     ports:
       - "127.0.0.1:8800:8000"
+    # --- REAL MODE (inference YOLO) ---
+    # Uncomment blok berikut (dan comment CV_MODE: dummy di atas) untuk memakai
+    # model asli. Taruh weight di cv-service-fastapi/models/best.pt (atau best-demo.pt).
+    #   docker compose -f docker/docker-compose.yml up -d --build cv-service
+    # build:
+    #   context: ../cv-service-fastapi
+    #   args:
+    #     INSTALL_REAL: "true"
+    # environment:
+    #   CV_MODE: real
+    #   CV_MODEL_PATH: /model/best.pt
+    # volumes:
+    #   - ../cv-service-fastapi/models:/model:ro
 
   mosquitto:
     image: eclipse-mosquitto:2

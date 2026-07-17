@@ -1,0 +1,8 @@
+# Dependency tambahan untuk CV_MODE=real (inference YOLO).
+# Base tetap di requirements.txt; pasang keduanya untuk real mode:
+#   pip install -r requirements.txt -r requirements-real.txt
+#
+# Catatan: torch ikut terpasang otomatis sebagai dependency ultralytics.
+# Butuh Python 3.11/3.12 (torch belum tentu punya wheel untuk 3.14).
+ultralytics>=8.3,<9
+opencv-python-headless

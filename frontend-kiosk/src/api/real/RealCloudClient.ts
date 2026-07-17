@@ -12,7 +12,9 @@ export class RealCloudClient implements ICloudClient {
   }
 
   async classify(imageBase64: string): Promise<CvDetection> {
-    const { data } = await api.post<CvDetection>('/cv/classify', { image: imageBase64 })
+    // Field harus `image_base64` — `image` di backend divalidasi sebagai file upload
+    // (CvProxyController), bukan string base64.
+    const { data } = await api.post<CvDetection>('/cv/classify', { image_base64: imageBase64 })
     return data
   }
 

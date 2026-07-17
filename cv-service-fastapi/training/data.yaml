@@ -1,0 +1,20 @@
+# Dataset config untuk melatih model kustom 2-kelas BunnyBin.
+# Struktur folder (format YOLO/Ultralytics):
+#
+#   training/dataset/
+#     images/train/*.jpg   labels/train/*.txt
+#     images/val/*.jpg     labels/val/*.txt
+#
+# Tiap file label .txt berisi satu baris per objek:
+#   <class_id> <x_center> <y_center> <width> <height>   (semua ternormalisasi 0-1)
+#
+# class_id: 0 = organic, 1 = inorganic  (WAJIB urut sesuai `names` di bawah,
+# karena LABEL_MAP di app/config.py memetakan nama "organic"/"inorganic").
+
+path: ./dataset          # root dataset relatif ke file ini
+train: images/train
+val: images/val
+
+names:
+  0: organic
+  1: inorganic

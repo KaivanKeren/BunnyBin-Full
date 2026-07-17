@@ -1,5 +1,14 @@
 .venv/
+.venv-real/
 __pycache__/
 .pytest_cache/
 .env
 model/*.pt
+# bobot & artefak training (jangan commit file besar)
+models/*.pt
+!models/.gitkeep
+yolov8*.pt
+training/dataset/
+training/runs/
+runs/
+
