@@ -53,26 +53,48 @@ CV_MODE=real CV_MODEL_PATH=models/best-demo.pt \
 
 ## 2. Jalur PRODUKSI — model kustom 2-kelas
 
-### a. Kumpulkan & label data
-- Foto sampah asli dari sudut & pencahayaan bin sebenarnya (makin mirip kondisi
-  lapangan makin baik). Target minimal ratusan gambar per kelas.
-- Label dengan bounding box memakai [Roboflow](https://roboflow.com),
-  [LabelImg](https://github.com/HumanSignal/labelImg), atau CVAT — ekspor **format YOLO**.
-- Susun ke struktur di [`data.yaml`](./data.yaml):
+Ada **dua sumber data**: dataset publik siap-pakai (2a) atau data lapangan sendiri (2b).
 
-  ```
-  training/dataset/
-    images/train/*.jpg   labels/train/*.txt
-    images/val/*.jpg     labels/val/*.txt
-  ```
-  `class_id`: `0=organic`, `1=inorganic` (WAJIB urut sesuai `names` di data.yaml).
+### 2a. Dari dataset PUBLIK (dipakai di project ini)
 
-### b. Latih
+Memakai [`keremberke/garbage-object-detection`](https://huggingface.co/datasets/keremberke/garbage-object-detection)
+(Roboflow "garbage-classification-3", format COCO, 6 kelas). Script
+[`prepare_dataset.py`](./prepare_dataset.py) meng-collapse 6 kelas ke 2:
+`biodegradable → organic`, sisanya (`cardboard/glass/metal/paper/plastic`) → `inorganic`.
+
 ```bash
-python train.py --epochs 100 --imgsz 640          # CPU (lambat) / auto-GPU bila ada
+# 1. Unduh split dari HuggingFace (tanpa kredensial):
+mkdir -p raw
+BASE=https://huggingface.co/datasets/keremberke/garbage-object-detection/resolve/main/data
+curl -L $BASE/train.zip -o raw/train.zip
+curl -L $BASE/valid.zip -o raw/valid.zip
+
+# 2. Konversi COCO -> YOLO 2-kelas (opsi --max-* untuk latihan cepat di CPU):
+python prepare_dataset.py --raw raw --out dataset --max-train 2500 --max-val 500
+# -> dataset/images/{train,val}, dataset/labels/{train,val}
+
+# 3. Latih (lanjut ke 2c).
+```
+
+Dataset lain (mis. Kaggle "Waste Classification", TACO) bisa dipakai: sesuaikan
+`ORGANIC_SOURCE` / logika di `prepare_dataset.py` agar nama kelas sumber terpetakan benar.
+
+### 2b. Dari data lapangan sendiri (akurasi produksi terbaik)
+- Foto sampah asli dari sudut & pencahayaan bin sebenarnya. Target ratusan+ gambar/kelas.
+- Label bbox dengan [Roboflow](https://roboflow.com), [LabelImg](https://github.com/HumanSignal/labelImg),
+  atau CVAT — ekspor **format YOLO**, `class_id`: `0=organic`, `1=inorganic`
+  (WAJIB urut sesuai `names` di [`data.yaml`](./data.yaml)). Susun ke `dataset/images|labels/{train,val}`.
+
+### 2c. Latih
+```bash
+python train.py --epochs 40 --imgsz 416           # dataset publik di atas (gambar 416px)
+python train.py --epochs 100 --imgsz 640          # data sendiri, CPU (lambat)
 python train.py --epochs 200 --model yolov8s.pt --device 0   # GPU, model lebih besar
 ```
 Hasil terbaik: `runs/detect/bunnybin*/weights/best.pt`.
+
+> **Catatan CPU:** melatih di CPU jauh lebih lambat & akurasinya terbatas oleh
+> epoch/subset. Untuk produksi, gunakan GPU + dataset penuh + epoch lebih banyak.
 
 ### c. Deploy
 ```bash
@@ -98,6 +120,7 @@ mode: build dengan `INSTALL_REAL=true`, mount folder `models/` ke `/model`, set
 | File | Fungsi |
 |---|---|
 | `data.yaml` | konfigurasi dataset 2-kelas |
+| `prepare_dataset.py` | unduh/konversi dataset publik (COCO→YOLO, collapse 6→2 kelas) |
 | `train.py` | latih model kustom (transfer learning) |
 | `make_demo_model.py` | hasilkan model demo COCO (`models/best-demo.pt`) |
 | `smoke_real_inference.py` | smoke-test inference nyata tanpa hardware |

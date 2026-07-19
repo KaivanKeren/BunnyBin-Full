@@ -32,6 +32,12 @@ def main() -> None:
     args = parser.parse_args()
 
     from ultralytics import YOLO
+    from ultralytics import settings as ul_settings
+
+    # data.yaml memakai `path: ./dataset` (relatif). Ultralytics me-resolve path
+    # relatif terhadap datasets_dir, jadi arahkan ke folder training/ ini agar
+    # ./dataset -> training/dataset tanpa hardcode path absolut di data.yaml.
+    ul_settings.update({"datasets_dir": str(HERE)})
 
     model = YOLO(args.model)  # base pretrained (auto-download saat pertama)
     results = model.train(
@@ -41,6 +47,7 @@ def main() -> None:
         batch=args.batch,
         device=args.device,
         name=args.name,
+        project=str(HERE / "runs"),  # output ke training/runs/ (gitignored)
     )
 
     best = Path(results.save_dir) / "weights" / "best.pt"
