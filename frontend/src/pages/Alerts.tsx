@@ -13,6 +13,7 @@ const ICONS: Record<AlertType, string> = {
   fill_90: '🔴',
   offline: '📡',
   maintenance: '🔧',
+  sensor_fault: '📏',
 }
 
 export function Alerts() {

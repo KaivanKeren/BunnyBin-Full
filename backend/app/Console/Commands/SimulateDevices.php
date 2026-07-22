@@ -84,9 +84,11 @@ class SimulateDevices extends Command
             }
             $this->fill[$unit->code] = $state;
 
+            // Publish jarak mentah seperti device sungguhan — konversi ke persen
+            // adalah tugas backend, jadi simulator ikut menguji jalur itu.
             $this->publish($unit, 'sensor', [
-                'organic_pct' => $state['organic'],
-                'inorganic_pct' => $state['inorganic'],
+                'organic_distance_cm' => $this->distanceFor($unit, $state['organic']),
+                'inorganic_distance_cm' => $this->distanceFor($unit, $state['inorganic']),
                 'ts' => now()->toIso8601String(),
             ]);
 
@@ -143,6 +145,17 @@ class SimulateDevices extends Command
     private function publish(Unit $unit, string $channel, array $payload): void
     {
         MQTT::publish("bunnybin/{$unit->code}/{$channel}", json_encode($payload));
+    }
+
+    /**
+     * Kebalikan dari Unit::fillPctFromDistance() — persen simulasi dijadikan
+     * jarak seolah dibaca sensor ultrasonik.
+     */
+    private function distanceFor(Unit $unit, int $pct): float
+    {
+        $empty = $unit->sensor_offset_cm + $unit->bin_height_cm;
+
+        return round($empty - ($pct / 100 * $unit->bin_height_cm), 1);
     }
 
     /**

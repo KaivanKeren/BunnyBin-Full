@@ -20,6 +20,8 @@ class UnitFactory extends Factory
             'status' => Unit::STATUS_ACTIVE,
             'last_seen_at' => now(),
             'installed_at' => fake()->dateTimeBetween('-6 months'),
+            'bin_height_cm' => 60,
+            'sensor_offset_cm' => 5,
         ];
     }
 }

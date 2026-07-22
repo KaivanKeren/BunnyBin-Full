@@ -9,6 +9,11 @@ export type WasteCategory = 'organic' | 'inorganic'
 export interface Esp32Status {
   organic_pct: number // 0-100, selaras nama kolom fill_snapshots
   inorganic_pct: number
+  // Jarak ultrasonik mentah bila firmware mengirimkannya. Lebih disukai saat
+  // relay ke cloud: konversi jarak→persen milik backend, jadi kalibrasi tong
+  // bisa diubah dari dashboard tanpa flash ulang firmware.
+  organic_distance_cm?: number
+  inorganic_distance_cm?: number
   servo_pos: 'idle' | 'organic' | 'inorganic'
 }
 export interface SortCommand {
@@ -52,9 +57,37 @@ export interface SortLogPayload {
   category_detected: WasteCategory | null
   confidence: number | null
   is_correct: boolean
+  // Waktu kejadian, diisi saat sortiran terjadi — bukan saat berhasil terkirim.
+  // Tanpa ini, log yang sempat mengendap di retry queue akan tercatat melenceng.
+  ts?: string
 }
+
+/**
+ * Relay pembacaan ESP32 ke cloud. Kirim jarak mentah bila firmware punya;
+ * persen hanya fallback untuk firmware/mock yang sudah menghitung sendiri.
+ */
+export interface FillReport {
+  organic_distance_cm?: number
+  inorganic_distance_cm?: number
+  organic_pct?: number
+  inorganic_pct?: number
+}
+
+/**
+ * Balasan backend atas relay: persen versi backend. Kiosk memakai angka INI
+ * untuk layarnya, bukan hitungannya sendiri — supaya nilai di kiosk dan di
+ * dashboard admin selalu berasal dari satu perhitungan yang sama.
+ */
+export interface FillAck {
+  organic_pct: number
+  inorganic_pct: number
+  recorded_at: string
+}
+
 export interface ICloudClient {
   getQuizBank(): Promise<QuizItem[]> // GET /api/quiz-items
   classify(imageBase64: string): Promise<CvDetection> // POST /api/cv/classify
   logSort(payload: SortLogPayload): Promise<void> // POST /api/units/{code}/sort-logs (§7)
+  reportFill(report: FillReport): Promise<FillAck> // POST /api/units/{code}/fill
+  heartbeat(): Promise<void> // POST /api/units/{code}/heartbeat
 }

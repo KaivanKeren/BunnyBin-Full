@@ -1,7 +1,14 @@
 // src/api/mock/MockCloudClient.ts
 // Simulasi Laravel cloud (§8). classify() = proxy CV (folded ke cloud sesuai §5:
 // "CV service tidak pernah dipanggil langsung dari device, Laravel selalu orchestrator").
-import type { CvDetection, ICloudClient, QuizItem, SortLogPayload } from '@/api/contracts'
+import type {
+  CvDetection,
+  FillAck,
+  FillReport,
+  ICloudClient,
+  QuizItem,
+  SortLogPayload,
+} from '@/api/contracts'
 import quizBankRaw from '@/mocks/quizBank.json'
 import { generateDetection } from './generateDetection'
 import { mockControls } from './mockControls'
@@ -35,5 +42,24 @@ export class MockCloudClient implements ICloudClient {
     await delay(150)
     this.sentLogs.push(payload)
     console.info('[MockCloud] logSort →', payload)
+  }
+
+  /**
+   * Backend nyata mengembalikan persen versi dirinya. Mock memantulkan balik apa
+   * yang dikirim ESP32 mock — cukup untuk menjalankan alur yang sama tanpa server.
+   */
+  async reportFill(report: FillReport): Promise<FillAck> {
+    if (mockControls.cloudOffline) throw new Error('cloud offline (mock)')
+    await delay(100)
+    return {
+      organic_pct: report.organic_pct ?? 0,
+      inorganic_pct: report.inorganic_pct ?? 0,
+      recorded_at: new Date().toISOString(),
+    }
+  }
+
+  async heartbeat(): Promise<void> {
+    if (mockControls.cloudOffline) throw new Error('cloud offline (mock)')
+    await delay(50)
   }
 }
