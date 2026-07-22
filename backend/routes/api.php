@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AlertController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CvProxyController;
 use App\Http\Controllers\Api\DashboardController;
+use App\Http\Controllers\Api\KioskIngestController;
 use App\Http\Controllers\Api\QuizItemController;
 use App\Http\Controllers\Api\SchoolController;
 use App\Http\Controllers\Api\SortLogController;
@@ -14,6 +15,14 @@ Route::post('/auth/login', [AuthController::class, 'login']);
 
 // Dipanggil kiosk/device dengan token unit (ability kiosk), bukan session admin.
 Route::post('/cv/classify', [CvProxyController::class, 'classify'])->middleware('auth:sanctum');
+
+// Ingest kiosk lewat HTTP — jalur setara MQTT untuk device tanpa broker.
+// kiosk.unit memastikan {code} adalah unit pemilik token yang dipakai.
+Route::middleware(['auth:sanctum', 'kiosk.unit'])->prefix('units/{code}')->group(function () {
+    Route::post('/fill', [KioskIngestController::class, 'fill']);
+    Route::post('/sort-logs', [KioskIngestController::class, 'sortLog']);
+    Route::post('/heartbeat', [KioskIngestController::class, 'heartbeat']);
+});
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/auth/logout', [AuthController::class, 'logout']);

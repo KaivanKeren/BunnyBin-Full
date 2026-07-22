@@ -4,7 +4,7 @@
 export type Role = 'super_admin' | 'school_admin'
 export type UnitStatus = 'active' | 'maintenance' | 'offline'
 export type WasteCategory = 'organic' | 'inorganic'
-export type AlertType = 'fill_70' | 'fill_90' | 'offline' | 'maintenance'
+export type AlertType = 'fill_70' | 'fill_90' | 'offline' | 'maintenance' | 'sensor_fault'
 
 export interface AdminUser {
   id: number
@@ -28,6 +28,9 @@ export interface School {
 export interface FillSnapshot {
   organic_pct: number
   inorganic_pct: number
+  // Jarak mentah ultrasonik — null bila device masih mengirim persen langsung
+  organic_distance_cm: number | null
+  inorganic_distance_cm: number | null
   recorded_at: string
 }
 
@@ -46,6 +49,9 @@ export interface Unit {
   status: UnitStatus
   last_seen_at: string | null
   installed_at: string | null
+  // Geometri tong — backend memakainya untuk konversi jarak sensor → persen
+  bin_height_cm: number
+  sensor_offset_cm: number
   school: { id: number; name: string }
   latest_fill: FillSnapshot | null
   maintenance_events?: MaintenanceEvent[]
@@ -54,6 +60,8 @@ export interface Unit {
 export interface FillHistoryRawPoint {
   organic_pct: number
   inorganic_pct: number
+  organic_distance_cm: number | null
+  inorganic_distance_cm: number | null
   recorded_at: string
 }
 

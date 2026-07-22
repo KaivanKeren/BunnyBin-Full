@@ -13,6 +13,7 @@ class Alert extends Model
     public const TYPE_FILL_90 = 'fill_90';
     public const TYPE_OFFLINE = 'offline';
     public const TYPE_MAINTENANCE = 'maintenance';
+    public const TYPE_SENSOR_FAULT = 'sensor_fault';
 
     protected $fillable = [
         'unit_id',

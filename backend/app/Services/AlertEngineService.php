@@ -18,6 +18,24 @@ class AlertEngineService
         $this->evaluateCompartment($unit, 'anorganik', $inorganicPct);
     }
 
+    /**
+     * Jarak ultrasonik di luar rentang wajar. Tanpa ini, sensor mati terbaca
+     * sebagai "tong kosong terus" dan tidak pernah terdeteksi petugas.
+     */
+    public function reportSensorFault(Unit $unit, string $label, float $distanceCm): void
+    {
+        if ($this->hasRecentUnread($unit, Alert::TYPE_SENSOR_FAULT)) {
+            return;
+        }
+
+        $this->createAlert($unit, Alert::TYPE_SENSOR_FAULT, sprintf(
+            'Sensor kompartemen %s unit %s membaca %.1f cm — di luar rentang wajar, periksa sensor atau kalibrasi tong.',
+            $label,
+            $unit->code,
+            $distanceCm,
+        ));
+    }
+
     public function evaluateOffline(Unit $unit): void
     {
         if ($unit->status === Unit::STATUS_OFFLINE) {

@@ -92,7 +92,11 @@ class UnitController extends Controller
         $query = $unit->fillSnapshots()->whereBetween('recorded_at', [$from, $to]);
 
         $data = $interval === 'raw'
-            ? $query->orderBy('recorded_at')->get(['organic_pct', 'inorganic_pct', 'recorded_at'])
+            ? $query->orderBy('recorded_at')->get([
+                'organic_pct', 'inorganic_pct',
+                'organic_distance_cm', 'inorganic_distance_cm',
+                'recorded_at',
+            ])
             : $query->selectRaw($this->hourlyBucketExpression().' AS bucket')
                 ->selectRaw('cast(round(avg(organic_pct)) as integer) AS avg_organic_pct')
                 ->selectRaw('cast(round(avg(inorganic_pct)) as integer) AS avg_inorganic_pct')

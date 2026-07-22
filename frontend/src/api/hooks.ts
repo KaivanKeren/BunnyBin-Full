@@ -60,6 +60,10 @@ export function useFillHistory(id: number, range: FillRange) {
       (await api.get<FillHistoryResponse>(`/units/${id}/fill-history`, {
         params: fillHistoryParams(range),
       })).data,
+    // Hanya rentang 24 jam yang bergerak dalam hitungan menit — itulah yang
+    // dipantau saat kiosk sedang dipakai. Agregat 7/30 hari tidak berubah
+    // secepat itu, menariknya tiap 30 detik hanya membuang query.
+    refetchInterval: range === '24h' ? POLL_MS : false,
   })
 }
 
@@ -70,6 +74,9 @@ export function useSortLogs(unitId: number, page: number) {
       (await api.get<Paginated<SortLog>>(`/units/${unitId}/sort-logs`, {
         params: { page },
       })).data,
+    // Sortiran anak di kiosk harus muncul tanpa reload manual. Halaman >1 sudah
+    // jadi riwayat — cukup halaman pertama yang diikuti terus.
+    refetchInterval: page === 1 ? POLL_MS : false,
   })
 }
 
@@ -152,6 +159,7 @@ export function useAllSortLogs(filters: SortLogFilters, page: number) {
       (await api.get<Paginated<SortLog> & { summary: SortLogsSummary }>('/sort-logs', {
         params: { ...filters, page },
       })).data,
+    refetchInterval: page === 1 ? POLL_MS : false,
   })
 }
 
@@ -222,6 +230,11 @@ export interface UnitPayload {
   code: string
   location_label: string | null
   status: UnitStatus
+  // Kalibrasi sensor: backend memakainya untuk mengubah jarak ultrasonik yang
+  // dikirim ESP32 jadi persen terisi. Bisa diubah dari sini supaya tong yang
+  // ukurannya beda tidak perlu flash ulang firmware.
+  bin_height_cm: number
+  sensor_offset_cm: number
 }
 
 export function useSaveUnit() {
