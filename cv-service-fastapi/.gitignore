@@ -9,6 +9,7 @@ models/*.pt
 !models/.gitkeep
 yolov8*.pt
 training/dataset/
+training/dataset_cls/
 training/runs/
 runs/
 

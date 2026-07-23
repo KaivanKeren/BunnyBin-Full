@@ -42,7 +42,7 @@
 // ---------------------------------------------------------------------------
 const char* WIFI_SSID     = "zzz";
 const char* WIFI_PASSWORD = "21212121";
-const char* MDNS_HOSTNAME = "bunnybin"; // akses via http://bunnybin.local
+const char* MDNS_HOSTNAME = "bunnybin"; // akses via bunnybin.local
 
 // ---------------------------------------------------------------------------
 // PIN MAPPING - sesuai schematic IYSA_BUNNYBIN REV 1.0

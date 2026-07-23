@@ -39,6 +39,18 @@ LABEL_MAP: dict[str, str] = {
     "scissors": "inorganic",
     "toothbrush": "inorganic",
     "book": "inorganic",
+    # --- Dataset Kaggle garbage-classification-v2 (10 kelas, model yolov8-cls) ---
+    # Konvensi 2-bin Indonesia: hanya sampah biologis = organik; sisanya anorganik.
+    "biological": "organic",
+    "battery": "inorganic",
+    "cardboard": "inorganic",
+    "clothes": "inorganic",
+    "glass": "inorganic",
+    "metal": "inorganic",
+    "paper": "inorganic",
+    "plastic": "inorganic",
+    "shoes": "inorganic",
+    "trash": "inorganic",
 }
 
 

@@ -10,7 +10,7 @@ export const config = {
   // bila mesin yang membuka kiosk menjalankan resolver mDNS — di mesin dev ini
   // avahi mati, jadi default-nya IP langsung. IP ini dibagikan DHCP dan bisa
   // berubah; cek Serial Monitor saat boot lalu set VITE_ESP32_BASE_URL.
-  esp32BaseUrl: import.meta.env.VITE_ESP32_BASE_URL ?? 'http://192.168.137.55',
+  esp32BaseUrl: import.meta.env.VITE_ESP32_BASE_URL ?? 'bunnybin.local',
   debugPanel: import.meta.env.VITE_DEBUG_PANEL === 'true',
   // Sanctum token per-unit ability 'kiosk' (§6) — di-generate backend `php artisan unit:token {code}`.
   kioskToken: import.meta.env.VITE_KIOSK_API_TOKEN ?? '',
