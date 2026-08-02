@@ -22,6 +22,13 @@ class Unit extends Model implements AuthenticatableContract
     public const STATUS_MAINTENANCE = 'maintenance';
     public const STATUS_OFFLINE = 'offline';
 
+    /** Rentang fisik HC-SR04 — di luar ini pembacaan pasti tidak sahih. */
+    public const SENSOR_MIN_CM = 2;
+    public const SENSOR_MAX_CM = 400;
+
+    /** Kelonggaran di luar rentang teoretis tong sebelum dianggap sensor rusak. */
+    public const SENSOR_TOLERANCE_CM = 10;
+
     protected $fillable = [
         'school_id',
         'code',
@@ -29,6 +36,8 @@ class Unit extends Model implements AuthenticatableContract
         'status',
         'last_seen_at',
         'installed_at',
+        'bin_height_cm',
+        'sensor_offset_cm',
     ];
 
     protected function casts(): array
@@ -36,7 +45,50 @@ class Unit extends Model implements AuthenticatableContract
         return [
             'last_seen_at' => 'datetime',
             'installed_at' => 'date',
+            'bin_height_cm' => 'integer',
+            'sensor_offset_cm' => 'integer',
         ];
+    }
+
+    /**
+     * Jarak ultrasonik (cm) → persen terisi. Sensor dipasang di tutup menghadap
+     * ke bawah, jadi jarak BERBANDING TERBALIK dengan isi:
+     *
+     *     [sensor]
+     *        │  sensor_offset_cm   ← jarak saat penuh
+     *        ├───────────────────── 100%
+     *        │  bin_height_cm
+     *        └───────────────────── 0%   ← jarak saat kosong = offset + tinggi
+     *
+     * Mengembalikan null bila pembacaan tidak masuk akal (echo hilang, sensor
+     * lepas/mati, geometri unit belum dikalibrasi) — pemanggil yang memutuskan
+     * itu jadi alert, bukan data.
+     */
+    public function fillPctFromDistance(float $distanceCm): ?int
+    {
+        $height = $this->bin_height_cm;
+        $offset = $this->sensor_offset_cm;
+
+        if ($height === null || $height <= 0) {
+            return null;
+        }
+
+        if ($distanceCm < self::SENSOR_MIN_CM || $distanceCm > self::SENSOR_MAX_CM) {
+            return null;
+        }
+
+        $empty = $offset + $height;
+
+        // Sedikit di luar rentang teoretis masih wajar (permukaan sampah tidak
+        // rata, tutup bergeser) → di-clamp. Jauh di luar = sensor bermasalah.
+        if ($distanceCm > $empty + self::SENSOR_TOLERANCE_CM
+            || $distanceCm < $offset - self::SENSOR_TOLERANCE_CM) {
+            return null;
+        }
+
+        $pct = ($empty - $distanceCm) / $height * 100;
+
+        return (int) round(max(0, min(100, $pct)));
     }
 
     /**
@@ -53,6 +105,8 @@ class Unit extends Model implements AuthenticatableContract
         return $query->addSelect([
             'latest_organic_pct' => $latest('organic_pct'),
             'latest_inorganic_pct' => $latest('inorganic_pct'),
+            'latest_organic_distance_cm' => $latest('organic_distance_cm'),
+            'latest_inorganic_distance_cm' => $latest('inorganic_distance_cm'),
             'latest_recorded_at' => $latest('recorded_at'),
         ]);
     }

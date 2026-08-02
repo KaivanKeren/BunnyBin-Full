@@ -16,6 +16,9 @@ class StoreUnitRequest extends FormRequest
             'location_label' => ['nullable', 'string', 'max:100'],
             'status' => ['sometimes', Rule::in([Unit::STATUS_ACTIVE, Unit::STATUS_MAINTENANCE, Unit::STATUS_OFFLINE])],
             'installed_at' => ['nullable', 'date'],
+            // Geometri sensor — dipakai backend untuk konversi jarak → persen.
+            'bin_height_cm' => ['sometimes', 'integer', 'min:10', 'max:400'],
+            'sensor_offset_cm' => ['sometimes', 'integer', 'min:0', 'max:100'],
         ];
     }
 }

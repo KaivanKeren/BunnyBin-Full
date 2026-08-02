@@ -9,8 +9,9 @@ class ClassifyRequest(BaseModel):
 
 class ClassifyResponse(BaseModel):
     category: Literal["organic", "inorganic"] | None
+    label: str | None = None
     confidence: float = Field(ge=0, le=1)
-    bbox: tuple[int, int, int, int] | None
+    bbox: tuple[float, float, float, float] | None
     model_version: str
 
 

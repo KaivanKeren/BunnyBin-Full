@@ -1,0 +1,26 @@
+# Dataset config model deteksi OBJEK BERNAMA BunnyBin (10 kelas).
+# Dibuat oleh remap_wastevision.py dari dataset waste-vision (Roboflow Universe,
+# directed-studies/waste-vision v4, CC BY 4.0). Model mengeluarkan nama objek
+# spesifik (mis. "botol_plastik"), bukan cuma organik/anorganik.
+#
+# names WAJIB urut sama dengan kunci LABEL_MAP_NAMED di app/config.py
+# (yang memetakan nama objek → kategori bin untuk sorting).
+#
+# Latih:  python train.py --data data_named.yaml --name bunnybin-named --epochs 80
+# Deploy: cp runs/bunnybin-named/weights/best.pt ../models/best.pt ; CV_MODE=real
+
+path: ./dataset_named
+train: images/train
+val: images/val
+
+names:
+  0: sisa_makanan      # organik
+  1: kayu              # organik
+  2: botol_plastik     # anorganik
+  3: gelas_plastik     # anorganik
+  4: sedotan           # anorganik
+  5: wadah_plastik     # anorganik
+  6: bungkus_plastik   # anorganik
+  7: kertas            # anorganik
+  8: kaleng            # anorganik
+  9: kaca              # anorganik

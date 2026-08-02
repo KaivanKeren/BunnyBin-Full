@@ -13,6 +13,8 @@ class FillSnapshot extends Model
         'unit_id',
         'organic_pct',
         'inorganic_pct',
+        'organic_distance_cm',
+        'inorganic_distance_cm',
         'recorded_at',
     ];
 
@@ -20,6 +22,11 @@ class FillSnapshot extends Model
     {
         return [
             'recorded_at' => 'datetime',
+            'organic_pct' => 'integer',
+            'inorganic_pct' => 'integer',
+            // float, bukan decimal: decimal di-cast jadi string dan bocor ke JSON API
+            'organic_distance_cm' => 'float',
+            'inorganic_distance_cm' => 'float',
         ];
     }
 

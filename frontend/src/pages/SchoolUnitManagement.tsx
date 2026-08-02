@@ -99,6 +99,10 @@ function UnitForm({
       code: '',
       location_label: null,
       status: 'active',
+      // Default = tong prototype IYSA_BUNNYBIN REV 1.0, sama dengan konstanta
+      // di firmware ESP32 (BIN_HEIGHT_CM 55, sensor menempel di tutup).
+      bin_height_cm: 55,
+      sensor_offset_cm: 0,
     },
   )
 
@@ -160,6 +164,43 @@ function UnitForm({
           <option value="offline">offline</option>
         </select>
       </label>
+
+      <fieldset className="rounded-lg border border-slate-200 p-3">
+        <legend className="px-1 text-xs font-semibold text-slate-600">Kalibrasi sensor</legend>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="text-sm">
+            <span className="mb-1 block text-slate-600">Tinggi tong (cm)</span>
+            <input
+              required
+              type="number"
+              min={10}
+              max={400}
+              className={inputClass}
+              value={form.bin_height_cm}
+              onChange={(e) => setForm({ ...form, bin_height_cm: Number(e.target.value) })}
+            />
+          </label>
+          <label className="text-sm">
+            <span className="mb-1 block text-slate-600">Jarak sensor saat penuh (cm)</span>
+            <input
+              required
+              type="number"
+              min={0}
+              max={100}
+              className={inputClass}
+              value={form.sensor_offset_cm}
+              onChange={(e) => setForm({ ...form, sensor_offset_cm: Number(e.target.value) })}
+            />
+          </label>
+        </div>
+        <p className="mt-2 text-xs text-slate-500">
+          ESP32 mengirim jarak ultrasonik mentah; kedua angka inilah yang mengubahnya jadi
+          persen terisi. Jarak saat tong kosong = tinggi + jarak saat penuh
+          {' '}({(form.bin_height_cm || 0) + (form.sensor_offset_cm || 0)} cm). Isi sesuai
+          pengukuran fisik tong — salah di sini membuat persen di dashboard melenceng
+          walau sensornya normal.
+        </p>
+      </fieldset>
 
       {save.isError && <ErrorState message="Gagal menyimpan unit (kode mungkin sudah dipakai)." />}
 
@@ -287,6 +328,8 @@ export function SchoolUnitManagement() {
                           code: unit.code,
                           location_label: unit.location_label,
                           status: unit.status,
+                          bin_height_cm: unit.bin_height_cm,
+                          sensor_offset_cm: unit.sensor_offset_cm,
                         })
                       }
                       className="mr-2 text-emerald-700 hover:underline"

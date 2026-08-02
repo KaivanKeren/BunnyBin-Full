@@ -16,6 +16,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'role' => \App\Http\Middleware\EnsureRole::class,
+            'kiosk.unit' => \App\Http\Middleware\EnsureKioskUnit::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

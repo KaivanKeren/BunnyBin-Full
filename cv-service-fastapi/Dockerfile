@@ -6,11 +6,11 @@ WORKDIR /app
 ARG INSTALL_REAL=false
 
 COPY requirements.txt requirements-real.txt ./
-RUN pip install --no-cache-dir -r requirements.txt \
+RUN pip install --no-cache-dir --timeout 120 -r requirements.txt \
     && if [ "$INSTALL_REAL" = "true" ]; then \
          apt-get update && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 \
          && rm -rf /var/lib/apt/lists/* \
-         && pip install --no-cache-dir -r requirements-real.txt; \
+         && pip install --no-cache-dir --timeout 120 -r requirements-real.txt; \
        fi
 
 COPY app/ ./app

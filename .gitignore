@@ -3,3 +3,7 @@ dist
 *.local
 .DS_Store
 docs/
+
+# Rahasia Docker — JANGAN commit API key. Pakai .env.roboflow.example sbagai templat.
+docker/.env.roboflow
+docker/.env

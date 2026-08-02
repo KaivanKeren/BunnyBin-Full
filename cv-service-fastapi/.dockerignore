@@ -1,0 +1,13 @@
+.venv
+.venv-real
+__pycache__
+*.pyc
+.git
+.pytest_cache
+.env
+.env.*
+!.env.example
+training/
+models/
+tests/
+*.md

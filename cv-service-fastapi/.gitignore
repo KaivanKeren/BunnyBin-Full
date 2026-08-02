@@ -8,7 +8,10 @@ model/*.pt
 models/*.pt
 !models/.gitkeep
 yolov8*.pt
-training/dataset/
+# dataset training (gambar+label, ratusan MB) — pola umum biar dataset baru
+# ikut keignore tanpa perlu nambah baris tiap kali
+training/dataset*/
+training/*_ds/
 training/runs/
 runs/
 

@@ -242,6 +242,41 @@ export function UnitDetail() {
           <p className="text-xs text-slate-400">
             Pembacaan <RelativeTime iso={u.latest_fill.recorded_at} />
           </p>
+
+          {/* Jarak mentah ditampilkan supaya kalibrasi bisa diadu dengan meteran:
+              persen bisa saja salah karena geometri unit keliru, bukan karena
+              sensornya rusak — dan dua sebab itu tidak bisa dibedakan dari
+              persen saja. Null = device lama yang masih mengirim persen. */}
+          <dl className="border-t border-slate-100 pt-3 text-xs text-slate-500">
+            <div className="flex justify-between">
+              <dt>Jarak sensor organik</dt>
+              <dd className="font-medium text-slate-600">
+                {u.latest_fill.organic_distance_cm !== null
+                  ? `${u.latest_fill.organic_distance_cm} cm`
+                  : '— (device kirim persen)'}
+              </dd>
+            </div>
+            <div className="mt-1 flex justify-between">
+              <dt>Jarak sensor anorganik</dt>
+              <dd className="font-medium text-slate-600">
+                {u.latest_fill.inorganic_distance_cm !== null
+                  ? `${u.latest_fill.inorganic_distance_cm} cm`
+                  : '— (device kirim persen)'}
+              </dd>
+            </div>
+            <div className="mt-1 flex justify-between">
+              <dt>Kalibrasi (tinggi / jarak penuh)</dt>
+              <dd className="font-medium text-slate-600">
+                {u.bin_height_cm} cm / {u.sensor_offset_cm} cm
+              </dd>
+            </div>
+            <div className="mt-1 flex justify-between">
+              <dt>Jarak saat tong kosong</dt>
+              <dd className="font-medium text-slate-600">
+                {u.bin_height_cm + u.sensor_offset_cm} cm
+              </dd>
+            </div>
+          </dl>
         </div>
       )}
 
