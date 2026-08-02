@@ -3,6 +3,6 @@ uvicorn[standard]
 pydantic-settings
 pillow
 python-multipart
-# real mode (uncomment saat model siap):
-# ultralytics
-# opencv-python-headless
+httpx
+# real mode: install via requirements-real.txt (ultralytics, opencv)
+# roboflow mode: httpx already included above, Roboflow Inference server runs separately

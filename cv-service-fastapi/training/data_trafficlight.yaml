@@ -1,0 +1,17 @@
+# Dataset trafficlight (Roboflow Universe: trafficlight-mavxw/organic-and-anorganic-waste, CC BY 4.0).
+# 4 kelas objek bernama padat (~800 foto/kelas) → akurasi jauh lebih baik dari
+# waste-vision. Prefiks "Organik-"/"Anorganik-" otomatis terpetakan ke kategori
+# oleh resolve_category() di app/config.py (fallback kata-kunci), jadi tak perlu
+# ubah LABEL_MAP. Frontend prettyLabel membuang prefiks → "Kulit Pisang", dll.
+#
+# Latih:  python train.py --data data_trafficlight.yaml --name bunnybin-buah --fraction 0.4 --imgsz 320 --epochs 20
+
+path: /mnt/Projects/BunnyBin-V2/cv-service-fastapi/training/trafficlight_ds
+train: train/images
+val: valid/images
+
+names:
+  0: Anorganik-botol-plastik
+  1: Anorganik-masker
+  2: Organik-jeruk-busuk
+  3: Organik-kulit-pisang

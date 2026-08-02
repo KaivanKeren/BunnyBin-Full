@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\QuizItem;
 use App\Models\Unit;
 use App\Services\CvClientService;
+use App\Services\DeviceIngestService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -16,12 +17,15 @@ class CvProxyController extends Controller
      * Body: multipart `image` ATAU {image_base64}. Jika unit_code + quiz_item_id
      * disertakan, hasil klasifikasi disimpan ke sort_logs (mode quiz).
      */
-    public function classify(Request $request, CvClientService $cv): JsonResponse
+    public function classify(Request $request, CvClientService $cv, DeviceIngestService $ingest): JsonResponse
     {
         // Sanctum session admin juga lolos auth:sanctum — pastikan pemanggil
         // adalah token unit dengan ability kiosk.
         $caller = $request->user();
         abort_unless($caller instanceof Unit && $caller->tokenCan('kiosk'), 403);
+
+        // P0-2: Tanda unit hidup setiap kali hit /classify
+        $ingest->markSeen($caller);
 
         $validated = $request->validate([
             'image' => ['required_without:image_base64', 'file', 'image', 'max:5120'],
@@ -30,6 +34,11 @@ class CvProxyController extends Controller
             'quiz_item_id' => ['sometimes', 'required', 'exists:quiz_items,id'],
         ]);
 
+        // P0-1: Validasi ownership — unit_code harus milik token yang autentik
+        if (isset($validated['unit_code']) && $validated['unit_code'] !== $caller->code) {
+            abort(403, 'unit_code tidak sesuai dengan token yang digunakan');
+        }
+
         $imageBase64 = $request->hasFile('image')
             ? base64_encode($request->file('image')->getContent())
             : $validated['image_base64'];
@@ -37,10 +46,9 @@ class CvProxyController extends Controller
         $result = $cv->classify($imageBase64);
 
         if (isset($validated['unit_code'], $validated['quiz_item_id'])) {
-            $unit = Unit::where('code', $validated['unit_code'])->firstOrFail();
             $quizItem = QuizItem::findOrFail($validated['quiz_item_id']);
 
-            $unit->sortLogs()->create([
+            $caller->sortLogs()->create([
                 'quiz_item_id' => $quizItem->id,
                 'category_detected' => $result->category,
                 'confidence' => $result->confidence,

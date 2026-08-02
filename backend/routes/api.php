@@ -14,7 +14,9 @@ use Illuminate\Support\Facades\Route;
 Route::post('/auth/login', [AuthController::class, 'login']);
 
 // Dipanggil kiosk/device dengan token unit (ability kiosk), bukan session admin.
-Route::post('/cv/classify', [CvProxyController::class, 'classify'])->middleware('auth:sanctum');
+// P2-2: throttle 'cv-classify' = 10 req/detik per kiosk token (600/menit).
+Route::post('/cv/classify', [CvProxyController::class, 'classify'])
+    ->middleware(['auth:sanctum', 'throttle:cv-classify']);
 
 // Ingest kiosk lewat HTTP — jalur setara MQTT untuk device tanpa broker.
 // kiosk.unit memastikan {code} adalah unit pemilik token yang dipakai.

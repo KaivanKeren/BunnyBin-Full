@@ -32,6 +32,7 @@ export default function DebugPanel() {
   const applyCvOverride = () => {
     kiosk.setNextDetection({
       category: cvCat === 'null' ? null : cvCat,
+      label: cvCat === 'null' ? null : cvCat,
       confidence: cvConf,
       bbox: null,
       model_version: 'debug',

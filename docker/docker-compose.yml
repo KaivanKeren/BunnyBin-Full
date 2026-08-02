@@ -27,24 +27,24 @@ services:
   # Dev: port dipublish ke host (127.0.0.1:8800) karena Laravel jalan di host.
   # Produksi (Fase 8): internal-only via expose, tanpa publish.
   cv-service:
-    build: ../cv-service-fastapi
+    build:
+      context: ../cv-service-fastapi
+      args:
+        INSTALL_REAL: "true"
+    # Rahasia (ROBOFLOW_API_KEY) dimuat dari docker/.env.roboflow yang GITIGNORED —
+    # jangan hardcode di file ini. Setup: `cp .env.roboflow.example .env.roboflow`
+    # lalu isi API key. required:false agar `up` tetap jalan tanpa file (mode dummy).
+    env_file:
+      - path: .env.roboflow
+        required: false
     environment:
-      CV_MODE: dummy
+      CV_MODE: ${CV_MODE:-roboflow}
+      CV_MODEL_PATH: ${CV_MODEL_PATH:-/model/best.pt}
+      ROBOFLOW_MODEL_ID: ${ROBOFLOW_MODEL_ID:-deteksi-sampah-organik-anorganik/3}
     ports:
       - "127.0.0.1:8800:8000"
-    # --- REAL MODE (inference YOLO) ---
-    # Uncomment blok berikut (dan comment CV_MODE: dummy di atas) untuk memakai
-    # model asli. Taruh weight di cv-service-fastapi/models/best.pt (atau best-demo.pt).
-    #   docker compose -f docker/docker-compose.yml up -d --build cv-service
-    # build:
-    #   context: ../cv-service-fastapi
-    #   args:
-    #     INSTALL_REAL: "true"
-    # environment:
-    #   CV_MODE: real
-    #   CV_MODEL_PATH: /model/best.pt
-    # volumes:
-    #   - ../cv-service-fastapi/models:/model:ro
+    volumes:
+      - ../cv-service-fastapi/models:/model:ro
 
   mosquitto:
     image: eclipse-mosquitto:2

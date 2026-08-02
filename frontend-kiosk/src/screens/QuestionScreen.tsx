@@ -5,12 +5,22 @@ import { Leaf, Recycle, ScanSearch, X } from 'lucide-react'
 import type { WasteCategory } from '@/api/contracts'
 import BunnyMascot from '@/components/BunnyMascot'
 import { useKiosk } from '@/context/kioskContext'
-import { itemEmoji } from '@/lib/itemEmoji'
+import { prettyLabel } from '@/lib/prettyLabel'
 
 export default function QuestionScreen() {
   const { state, answer } = useKiosk()
-  const { item, wrongChoice, detection } = state
-  const highConfidence = !!detection?.category && detection.confidence >= 0.75
+  const { wrongChoice, detection } = state
+  const detectedCategory = detection?.category ?? null
+  // Tampilkan hasil deteksi CV apa adanya (label model), bukan nama quiz item.
+  const detectedLabel =
+    prettyLabel(detection?.label) ??
+    (detectedCategory === 'organic'
+      ? 'Sampah Organik'
+      : detectedCategory === 'inorganic'
+        ? 'Sampah Anorganik'
+        : null)
+  const confidencePct =
+    detection && detection.confidence > 0 ? Math.round(detection.confidence * 100) : null
 
   return (
     <motion.div
@@ -27,13 +37,18 @@ export default function QuestionScreen() {
       >
         <ScanSearch className="text-inorganic-500" size={18} />
         <span className="text-xs font-bold uppercase tracking-wider text-[#9b8a7c]">
-          {highConfidence ? 'Hasil Deteksi' : 'Ayo Tebak'}
+          Hasil Deteksi
         </span>
-        {item && (
+        {detectedLabel ? (
           <>
-            <span className="text-2xl">{itemEmoji(item)}</span>
-            <span className="text-lg font-bold text-[#3a2f29]">{item.item_name}</span>
+            <span className="text-2xl">{detectedCategory === 'organic' ? '🌿' : '♻️'}</span>
+            <span className="text-lg font-bold text-[#3a2f29]">{detectedLabel}</span>
+            {confidencePct !== null && (
+              <span className="text-sm font-normal text-[#9b8a7c]">{confidencePct}%</span>
+            )}
           </>
+        ) : (
+          <span className="text-sm font-semibold text-[#9b8a7c]">Objek tidak terdeteksi</span>
         )}
       </motion.div>
 

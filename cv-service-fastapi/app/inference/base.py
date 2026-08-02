@@ -8,8 +8,9 @@ from PIL import Image
 class Detection:
     category: str | None
     confidence: float
-    bbox: tuple[int, int, int, int] | None
+    bbox: tuple[float, float, float, float] | None  # normalized 0-1
     model_version: str
+    label: str | None = None
 
 
 class Classifier(ABC):

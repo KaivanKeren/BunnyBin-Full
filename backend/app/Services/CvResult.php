@@ -9,6 +9,7 @@ readonly class CvResult
         public float $confidence,
         public ?array $bbox,
         public ?string $modelVersion,
+        public ?string $label = null,
     ) {}
 
     public static function fromArray(array $data): self
@@ -18,6 +19,7 @@ readonly class CvResult
             confidence: (float) ($data['confidence'] ?? 0),
             bbox: $data['bbox'] ?? null,
             modelVersion: $data['model_version'] ?? null,
+            label: $data['label'] ?? null,
         );
     }
 
@@ -25,6 +27,7 @@ readonly class CvResult
     {
         return [
             'category' => $this->category,
+            'label' => $this->label,
             'confidence' => $this->confidence,
             'bbox' => $this->bbox,
             'model_version' => $this->modelVersion,

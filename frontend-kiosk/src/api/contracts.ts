@@ -34,6 +34,7 @@ export interface IEsp32Client {
 // Kontrak PERSIS sama dengan PRD-CV-Service-FastAPI.md §3 ClassifyResponse
 export interface CvDetection {
   category: WasteCategory | null
+  label: string | null
   confidence: number // 0-1
   bbox: [number, number, number, number] | null
   model_version: string
