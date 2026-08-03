@@ -14,7 +14,7 @@ export default function StatusBar() {
         <span
           className={`h-2 w-2 rounded-full ${online ? 'animate-pulse bg-organic-400' : 'bg-gray-400'}`}
         />
-        {online ? 'BunnyBin Online' : 'BunnyBin Mode Lokal'}
+        {online ? 'Binexa Online' : 'Binexa Mode Lokal'}
       </div>
       <div className="flex items-center gap-2">
         <div className="rounded-full bg-white/70 px-3 py-1 font-bold text-[#3a2f29] shadow-soft">

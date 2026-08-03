@@ -1,4 +1,4 @@
-"""Siapkan dataset foto asli prototipe BunnyBin untuk fine-tuning.
+"""Siapkan dataset foto asli prototipe Binexa untuk fine-tuning.
 
 Menerima folder berisi foto asli per kelas (organic/inorganic),
 split train/val, dan output ke format kompatibel train_cls.py.

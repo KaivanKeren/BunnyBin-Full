@@ -1,4 +1,4 @@
-# Dataset config untuk melatih model kustom 2-kelas BunnyBin.
+# Dataset config untuk melatih model kustom 2-kelas Binexa.
 # Struktur folder (format YOLO/Ultralytics):
 #
 #   training/dataset/

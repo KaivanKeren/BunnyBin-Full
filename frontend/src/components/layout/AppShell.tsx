@@ -21,7 +21,7 @@ export function AppShell() {
     <div className="flex min-h-screen">
       <aside className="flex w-56 shrink-0 flex-col border-r border-slate-200 bg-white p-4">
         <div className="mb-6 px-3">
-          <span className="text-lg font-bold text-emerald-600">🐰 BunnyBin</span>
+          <span className="text-lg font-bold text-emerald-600">🐰 Binexa</span>
           <p className="text-xs text-slate-400">Admin Dashboard</p>
         </div>
 

@@ -7,7 +7,7 @@ use Illuminate\Console\Command;
 
 class IssueUnitToken extends Command
 {
-    protected $signature = 'unit:token {code : Kode unit, ex: BNB-001}';
+    protected $signature = 'unit:token {code : Kode unit, ex: BNX-001}';
 
     protected $description = 'Terbitkan Sanctum token kiosk untuk sebuah unit (dipasang di device)';
 

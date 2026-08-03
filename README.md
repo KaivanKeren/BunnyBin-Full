@@ -1,8 +1,8 @@
-# BunnyBin
+# Binexa
 
 **Tempat sampah pintar edukatif untuk sekolah** — memilah sampah organik/anorganik secara otomatis dengan Computer Vision, memberi kuis edukasi ke anak lewat layar kiosk, dan memantau seluruh unit dari dashboard admin secara real-time.
 
-BunnyBin menghubungkan tiga dunia: perangkat IoT di lapangan (ESP32 + kamera + sensor), layanan cloud yang memproses dan menyimpan data, serta antarmuka untuk anak (kiosk) dan pengelola (admin). Tujuannya mendukung program pemilahan sampah di sekolah sekaligus mengedukasi siswa.
+Binexa menghubungkan tiga dunia: perangkat IoT di lapangan (ESP32 + kamera + sensor), layanan cloud yang memproses dan menyimpan data, serta antarmuka untuk anak (kiosk) dan pengelola (admin). Tujuannya mendukung program pemilahan sampah di sekolah sekaligus mengedukasi siswa.
 
 ---
 
@@ -26,7 +26,7 @@ BunnyBin menghubungkan tiga dunia: perangkat IoT di lapangan (ESP32 + kamera + s
 
 ## 1. Ringkasan & Fitur
 
-BunnyBin terdiri dari empat komponen software yang bekerja sama:
+Binexa terdiri dari empat komponen software yang bekerja sama:
 
 | Komponen | Peran |
 |---|---|
@@ -59,7 +59,7 @@ BunnyBin terdiri dari empat komponen software yang bekerja sama:
 ┌──────────────┐   MQTT    ┌─────────────────────────────────────────┐
 │  ESP32 (bin) │──────────▶│           Mosquitto Broker              │
 └──────────────┘           └───────────────────┬─────────────────────┘
-                                                │ subscribe bunnybin/+/#
+                                                │ subscribe binexa/+/#
                                                 ▼
                                 ┌───────────────────────────────┐
                                 │  Laravel App (Backend utama)  │
@@ -215,7 +215,7 @@ Backend juga butuh **queue worker** (memproses job ingestion sensor) dan opsiona
 # Terminal: queue worker (wajib untuk ingestion & alert)
 php artisan queue:work
 
-# Terminal: MQTT listener (subscribe bunnybin/+/#)
+# Terminal: MQTT listener (subscribe binexa/+/#)
 php artisan mqtt:listen
 ```
 
@@ -288,9 +288,9 @@ Simulator mem-publish `sensor`, `sort`, dan `heartbeat` untuk tiap unit berstatu
 **Token kiosk untuk mode real** (kiosk memakai Sanctum token per-unit dengan ability `kiosk`):
 
 ```bash
-php artisan unit:token BNB-001
+php artisan unit:token BNX-001
 # Salin token ke frontend-kiosk/.env → VITE_KIOSK_API_TOKEN=...
-# dan setel VITE_UNIT_CODE=BNB-001, VITE_USE_MOCK=false
+# dan setel VITE_UNIT_CODE=BNX-001, VITE_USE_MOCK=false
 ```
 
 ---
@@ -301,15 +301,15 @@ php artisan unit:token BNB-001
 
 | Peran | Email | Password | Akses |
 |---|---|---|---|
-| Super Admin | `admin@bunnybin.id` | `password` | Semua sekolah, semua unit, kelola kuis & sekolah |
+| Super Admin | `admin@binexa.id` | `password` | Semua sekolah, semua unit, kelola kuis & sekolah |
 | School Admin | (email admin sekolah tiap seed) | `password` | Hanya sekolah miliknya |
 
 > Password default berasal dari `SEED_ADMIN_PASSWORD` (default `password`). **Ganti di produksi.**
 
 **Sekolah & unit contoh:**
 
-- **SDN 1 Kudus** — `BNB-001` (Kelas 3A, active), `BNB-002` (Kantin, active), `BNB-003` (Perpustakaan, maintenance)
-- **SDN 2 Demak** — `BNB-004` (Lapangan, active), `BNB-005` (UKS, offline)
+- **SDN 1 Kudus** — `BNX-001` (Kelas 3A, active), `BNX-002` (Kantin, active), `BNX-003` (Perpustakaan, maintenance)
+- **SDN 2 Demak** — `BNX-004` (Lapangan, active), `BNX-005` (UKS, offline)
 
 Seed juga mengisi bank kuis, sebagian riwayat sortir, maintenance event, dan alert contoh.
 
@@ -349,18 +349,18 @@ Base URL: `/api` — Auth: **Laravel Sanctum**.
 
 ## 10. Ingestion MQTT
 
-**Topik** (`{unit_code}` = kode unit, mis. `BNB-001`):
+**Topik** (`{unit_code}` = kode unit, mis. `BNX-001`):
 
 | Topik | Payload |
 |---|---|
-| `bunnybin/{unit_code}/sensor` | `{"organic_pct": 42, "inorganic_pct": 68, "ts": "..."}` |
-| `bunnybin/{unit_code}/sort` | `{"category": "organic", "ts": "..."}` |
-| `bunnybin/{unit_code}/heartbeat` | `{"status": "online", "ts": "..."}` |
-| `bunnybin/{unit_code}/cmd` | Command Laravel → ESP32 (opsional) |
+| `binexa/{unit_code}/sensor` | `{"organic_pct": 42, "inorganic_pct": 68, "ts": "..."}` |
+| `binexa/{unit_code}/sort` | `{"category": "organic", "ts": "..."}` |
+| `binexa/{unit_code}/heartbeat` | `{"status": "online", "ts": "..."}` |
+| `binexa/{unit_code}/cmd` | Command Laravel → ESP32 (opsional) |
 
 **Alur pemrosesan:**
 
-1. `php artisan mqtt:listen` subscribe `bunnybin/+/#`.
+1. `php artisan mqtt:listen` subscribe `binexa/+/#`.
 2. Tiap pesan → dispatch job `ProcessSensorReading` ke queue.
 3. Job parse `unit_code`, cari `unit_id`, insert ke `fill_snapshots` / `sort_logs`, update `units.last_seen_at`.
 4. `AlertEngineService` cek threshold (≥70% → `fill_70`, ≥90% → `fill_90`), buat alert (dengan anti-spam).
@@ -395,7 +395,7 @@ Base URL: `/api` — Auth: **Laravel Sanctum**.
 | `VITE_USE_MOCK` | `true` = jalan tanpa backend; `false` = real mode |
 | `VITE_API_URL` | endpoint API Laravel |
 | `VITE_KIOSK_API_TOKEN` | Sanctum token per-unit (`php artisan unit:token`) |
-| `VITE_UNIT_CODE` | kode unit device ini (mis. `BNB-001`) |
+| `VITE_UNIT_CODE` | kode unit device ini (mis. `BNX-001`) |
 | `VITE_ESP32_BASE_URL` | endpoint ESP32 lokal |
 | `VITE_DEBUG_PANEL` | panel debug — **jangan `true` di produksi** |
 

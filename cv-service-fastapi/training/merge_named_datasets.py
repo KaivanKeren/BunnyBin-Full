@@ -1,4 +1,4 @@
-"""Gabung 3 dataset Roboflow → 9 kelas objek bernama BunnyBin (dataset_combined/).
+"""Gabung 3 dataset Roboflow → 9 kelas objek bernama Binexa (dataset_combined/).
 
 Sumber (semua sudah di-download sebagai YOLOv8):
   trafficlight_ds  — kulit pisang, jeruk, botol plastik, masker  (padat)

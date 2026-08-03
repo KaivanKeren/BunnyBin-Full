@@ -1,4 +1,4 @@
-"""Remap dataset waste-vision (28 kelas) → 10 kelas objek bernama BunnyBin.
+"""Remap dataset waste-vision (28 kelas) → 10 kelas objek bernama Binexa.
 
 waste-vision punya 28 kelas berserakan (banyak varian paper_*/plastic_*) dgn total
 hanya ~740 gambar train → tiap kelas tipis, akurasi jelek. Script ini menggabungkan

@@ -16,21 +16,21 @@ it('super_admin can create a unit', function () {
     $this->actingAs($this->superAdmin)
         ->postJson('/api/units', [
             'school_id' => $this->school->id,
-            'code' => 'BNB-100',
+            'code' => 'BNX-100',
             'location_label' => 'Kantin',
         ])
         ->assertCreated()
-        ->assertJsonPath('code', 'BNB-100')
+        ->assertJsonPath('code', 'BNX-100')
         ->assertJsonPath('school.id', $this->school->id);
 
-    $this->assertDatabaseHas('units', ['code' => 'BNB-100']);
+    $this->assertDatabaseHas('units', ['code' => 'BNX-100']);
 });
 
 it('rejects duplicate unit code', function () {
-    Unit::factory()->create(['code' => 'BNB-100']);
+    Unit::factory()->create(['code' => 'BNX-100']);
 
     $this->actingAs($this->superAdmin)
-        ->postJson('/api/units', ['school_id' => $this->school->id, 'code' => 'BNB-100'])
+        ->postJson('/api/units', ['school_id' => $this->school->id, 'code' => 'BNX-100'])
         ->assertUnprocessable()
         ->assertJsonValidationErrors('code');
 });
@@ -40,7 +40,7 @@ it('school_admin cannot create, update, or delete units', function () {
     $unit = Unit::factory()->create(['school_id' => $this->school->id]);
 
     $this->actingAs($admin)
-        ->postJson('/api/units', ['school_id' => $this->school->id, 'code' => 'BNB-200'])
+        ->postJson('/api/units', ['school_id' => $this->school->id, 'code' => 'BNX-200'])
         ->assertForbidden();
 
     $this->actingAs($admin)

@@ -1,4 +1,4 @@
-"""Latih model YOLO kustom 2-kelas (organic/inorganic) untuk BunnyBin.
+"""Latih model YOLO kustom 2-kelas (organic/inorganic) untuk Binexa.
 
 Prasyarat:
     pip install -r ../requirements.txt -r ../requirements-real.txt
@@ -24,7 +24,7 @@ HERE = Path(__file__).resolve().parent
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Latih model YOLO BunnyBin")
+    parser = argparse.ArgumentParser(description="Latih model YOLO Binexa")
     parser.add_argument("--model", default="yolov8n.pt", help="base weight (transfer learning)")
     parser.add_argument("--data", default=str(HERE / "data.yaml"))
     parser.add_argument("--epochs", type=int, default=100)
@@ -33,7 +33,7 @@ def main() -> None:
     parser.add_argument("--fraction", type=float, default=1.0,
                         help="pakai sebagian data train (mis. 0.4) — untuk latihan cepat di CPU")
     parser.add_argument("--device", default=None, help="cuda index (mis. 0) atau 'cpu'")
-    parser.add_argument("--name", default="bunnybin", help="nama run")
+    parser.add_argument("--name", default="binexa", help="nama run")
     args = parser.parse_args()
 
     from ultralytics import YOLO

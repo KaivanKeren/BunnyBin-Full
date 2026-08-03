@@ -3,7 +3,7 @@
 # user (kulit buah, daun, sisa makanan, botol/gelas/sedotan/wadah/bungkus plastik).
 # rumput belum ada di dataset publik mana pun. names selaras LABEL_MAP_NAMED.
 #
-# Latih:  python train.py --data data_combined.yaml --name bunnybin-combined --imgsz 320 --epochs 20
+# Latih:  python train.py --data data_combined.yaml --name binexa-combined --imgsz 320 --epochs 20
 
 path: /mnt/Projects/BunnyBin-V2/cv-service-fastapi/training/dataset_combined
 train: images/train

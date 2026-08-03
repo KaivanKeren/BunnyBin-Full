@@ -15,8 +15,8 @@ export const config = {
   // Sanctum token per-unit ability 'kiosk' (§6) — di-generate backend `php artisan unit:token {code}`.
   kioskToken: import.meta.env.VITE_KIOSK_API_TOKEN ?? '',
   // unit_code device ini — harus SAMA dengan unit yang dipakai token kiosk,
-  // dan dengan unit yang tampil di dashboard admin. Prototype: satu unit BNB-001.
-  unitCode: import.meta.env.VITE_UNIT_CODE ?? 'BNB-001',
+  // dan dengan unit yang tampil di dashboard admin. Prototype: satu unit BNX-001.
+  unitCode: import.meta.env.VITE_UNIT_CODE ?? 'BNX-001',
   // Jeda relay pembacaan ESP32 → cloud. Polling layar jauh lebih cepat (2 dtk),
   // tapi menulis snapshot secepat itu hanya membanjiri tabel time-series.
   fillRelayMs: Number(import.meta.env.VITE_FILL_RELAY_MS ?? 30_000),

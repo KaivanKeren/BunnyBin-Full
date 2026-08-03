@@ -1,8 +1,8 @@
 """Uji coba deteksi objek real-time dari kamera (mis. DroidCam di HP Android)
-memakai model YOLO BunnyBin.
+memakai model YOLO Binexa.
 
 Menampilkan window live dengan bounding box + label mentah (COCO/kustom) dan
-kategori kontrak BunnyBin ("organik"/"anorganik") hasil pemetaan LABEL_MAP,
+kategori kontrak Binexa ("organik"/"anorganik") hasil pemetaan LABEL_MAP,
 plus confidence dan FPS. Tekan `q` untuk keluar, `s` untuk simpan snapshot.
 
 Pakai:
@@ -72,7 +72,7 @@ class MjpegReader:
 
     def _run(self) -> None:
         try:
-            req = urllib.request.Request(self.url, headers={"User-Agent": "BunnyBin-RT/1.0"})
+            req = urllib.request.Request(self.url, headers={"User-Agent": "Binexa-RT/1.0"})
             stream = urllib.request.urlopen(req, timeout=self.timeout)
         except Exception as e:  # noqa: BLE001
             self._err = f"tidak bisa buka stream: {e}"
@@ -119,7 +119,7 @@ class MjpegReader:
 def _is_streamable(url: str, timeout: float = 5.0) -> str | None:
     """Kembalikan content-type bila URL menyajikan gambar/stream, else None."""
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "BunnyBin-RT/1.0"})
+        req = urllib.request.Request(url, headers={"User-Agent": "Binexa-RT/1.0"})
         resp = urllib.request.urlopen(req, timeout=timeout)
         ct = (resp.headers.get("Content-Type") or "").lower()
         resp.close()
@@ -257,7 +257,7 @@ def draw_cls(frame, probs, names, conf_thr: float) -> tuple[np.ndarray, list[str
 
 # --------------------------------------------------------------------------- #
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Deteksi objek real-time BunnyBin (YOLO)")
+    ap = argparse.ArgumentParser(description="Deteksi objek real-time Binexa (YOLO)")
     ap.add_argument("--url", default=os.getenv("CV_STREAM_URL", "http://10.23.3.187:4747"),
                     help="URL DroidCam (host:port), URL stream MJPEG, atau index webcam (mis. 0)")
     ap.add_argument("--model", default=os.getenv("CV_MODEL_PATH", str(HERE / "models/best-demo.pt")))
@@ -286,7 +286,7 @@ def main() -> None:
     if save_dir:
         save_dir.mkdir(parents=True, exist_ok=True)
 
-    win = "BunnyBin - Deteksi Real-time (q=keluar, s=snapshot)"
+    win = "Binexa - Deteksi Real-time (q=keluar, s=snapshot)"
     n, t0, fps = 0, time.time(), 0.0
     snap = 0
     try:

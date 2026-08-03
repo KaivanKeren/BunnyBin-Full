@@ -27,7 +27,7 @@ export default function IdleScreen() {
         transition={{ delay: 0.05 }}
         className="z-10 inline-flex items-center gap-2 rounded-full bg-white/70 px-4 py-1.5 text-xs font-semibold text-organic-500 shadow-soft"
       >
-        <Sparkles size={14} /> BunnyBin v1.0
+        <Sparkles size={14} /> Binexa v1.0
       </motion.div>
 
       <div className="z-10 flex flex-col items-center">

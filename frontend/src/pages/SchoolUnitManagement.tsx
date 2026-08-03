@@ -135,7 +135,7 @@ function UnitForm({
         <input
           required
           maxLength={30}
-          placeholder="BNB-003"
+          placeholder="BNX-003"
           className={inputClass}
           value={form.code}
           onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })}

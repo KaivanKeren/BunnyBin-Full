@@ -11,14 +11,14 @@ beforeEach(function () {
     // Geometri eksplisit: kosong terbaca 65 cm, penuh 5 cm, 1 cm = 1.667%.
     $this->unit = Unit::factory()->create([
         'school_id' => School::factory()->create()->id,
-        'code' => 'BNB-001',
+        'code' => 'BNX-001',
         'last_seen_at' => now()->subHour(),
         'bin_height_cm' => 60,
         'sensor_offset_cm' => 5,
     ]);
 });
 
-function dispatchReading(string $channel, array $payload, string $code = 'BNB-001'): void
+function dispatchReading(string $channel, array $payload, string $code = 'BNX-001'): void
 {
     (new ProcessSensorReading($code, $channel, $payload))->handle(app(DeviceIngestService::class));
 }
@@ -154,7 +154,7 @@ it('skips invalid sensor payload without crashing', function () {
 });
 
 it('ignores unknown unit codes without throwing', function () {
-    dispatchReading('sensor', ['organic_pct' => 42, 'inorganic_pct' => 68], 'BNB-999');
+    dispatchReading('sensor', ['organic_pct' => 42, 'inorganic_pct' => 68], 'BNX-999');
 
     $this->assertDatabaseCount('fill_snapshots', 0);
 });

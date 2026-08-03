@@ -67,7 +67,7 @@ LABEL_MAP_ROBOFLOW: dict[str, str] = {
     "Sampah-Anorganik": "inorganic",
 }
 
-# Model deteksi objek BERNAMA (10 kelas) — hasil training kustom BunnyBin
+# Model deteksi objek BERNAMA (10 kelas) — hasil training kustom Binexa
 # (lihat training/data_named.yaml). Model mengeluarkan nama objek spesifik;
 # peta ini yang menjaga sorting tetap AKURAT (nama objek → kategori bin).
 # Kunci WAJIB selaras dengan `names` di training/data_named.yaml.

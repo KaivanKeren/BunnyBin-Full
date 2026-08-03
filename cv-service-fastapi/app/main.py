@@ -49,7 +49,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="BunnyBin CV Service", lifespan=lifespan)
+app = FastAPI(title="Binexa CV Service", lifespan=lifespan)
 
 
 def decode_and_validate(image_base64: str, settings: Settings) -> Image.Image:

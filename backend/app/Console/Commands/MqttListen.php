@@ -11,7 +11,7 @@ class MqttListen extends Command
 {
     protected $signature = 'mqtt:listen';
 
-    protected $description = 'Subscribe bunnybin/+/# dan dispatch job ingestion untuk tiap pesan';
+    protected $description = 'Subscribe binexa/+/# dan dispatch job ingestion untuk tiap pesan';
 
     public function handle(): int
     {
@@ -21,7 +21,7 @@ class MqttListen extends Command
             try {
                 $mqtt = MQTT::connection();
 
-                $mqtt->subscribe('bunnybin/+/#', function (string $topic, string $message) {
+                $mqtt->subscribe('binexa/+/#', function (string $topic, string $message) {
                     $this->dispatchMessage($topic, $message);
                 }, 1);
 

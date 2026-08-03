@@ -10,7 +10,7 @@ use Laravel\Sanctum\Sanctum;
 beforeEach(function () {
     $this->unit = Unit::factory()->create([
         'school_id' => School::factory()->create()->id,
-        'code' => 'BNB-001',
+        'code' => 'BNX-001',
     ]);
 });
 
@@ -52,7 +52,7 @@ it('stores a sort log when unit_code and quiz_item_id are provided', function ()
 
     $this->postJson('/api/cv/classify', [
         'image_base64' => base64_encode('img'),
-        'unit_code' => 'BNB-001',
+        'unit_code' => 'BNX-001',
         'quiz_item_id' => $quizItem->id,
     ])->assertOk();
 

@@ -9,8 +9,8 @@ use App\Models\Unit;
 beforeEach(function () {
     $this->schoolA = School::factory()->create(['name' => 'SDN 1 Kudus']);
     $this->schoolB = School::factory()->create(['name' => 'SDN 2 Pati']);
-    $this->unitA = Unit::factory()->create(['school_id' => $this->schoolA->id, 'code' => 'BNB-001']);
-    $this->unitB = Unit::factory()->create(['school_id' => $this->schoolB->id, 'code' => 'BNB-002']);
+    $this->unitA = Unit::factory()->create(['school_id' => $this->schoolA->id, 'code' => 'BNX-001']);
+    $this->unitB = Unit::factory()->create(['school_id' => $this->schoolB->id, 'code' => 'BNX-002']);
     $this->adminA = AdminUser::factory()->create(['school_id' => $this->schoolA->id]);
 });
 
@@ -19,7 +19,7 @@ it('school_admin only sees units of their own school', function () {
         ->getJson('/api/units')
         ->assertOk()
         ->assertJsonCount(1, 'data')
-        ->assertJsonPath('data.0.code', 'BNB-001');
+        ->assertJsonPath('data.0.code', 'BNX-001');
 });
 
 it('school_admin cannot view another school unit detail', function () {

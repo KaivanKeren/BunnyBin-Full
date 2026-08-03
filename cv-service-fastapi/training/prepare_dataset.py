@@ -1,4 +1,4 @@
-"""Siapkan dataset YOLO 2-kelas (organic/inorganic) BunnyBin dari dataset publik
+"""Siapkan dataset YOLO 2-kelas (organic/inorganic) Binexa dari dataset publik
 `keremberke/garbage-object-detection` (Roboflow "garbage-classification-3").
 
 Sumber: 6 kelas COCO [biodegradable, cardboard, glass, metal, paper, plastic].
@@ -96,7 +96,7 @@ def convert_split(src_dir: Path, out: Path, split_name: str, limit: int | None) 
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Siapkan dataset YOLO 2-kelas BunnyBin")
+    ap = argparse.ArgumentParser(description="Siapkan dataset YOLO 2-kelas Binexa")
     ap.add_argument("--raw", default=str(HERE / "raw"), help="folder berisi train.zip / valid.zip")
     ap.add_argument("--out", default=str(HERE / "dataset"), help="folder output dataset YOLO")
     ap.add_argument("--max-train", type=int, default=None,

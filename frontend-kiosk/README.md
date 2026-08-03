@@ -1,4 +1,4 @@
-# BunnyBin Kiosk (frontend-kiosk)
+# Binexa Kiosk (frontend-kiosk)
 
 UI kiosk yang berinteraksi langsung dengan anak di layar trash bin. Implementasi dari
 [`docs/PRD-Frontend.md`](../docs/PRD-Frontend.md). Track independen, terpisah dari dashboard

@@ -10,7 +10,7 @@ use Illuminate\Database\Seeder;
 use Illuminate\Support\Collection;
 
 /**
- * Seed prototype: SATU sekolah, SATU unit (BNB-001) — cerminan hardware yang
+ * Seed prototype: SATU sekolah, SATU unit (BNX-001) — cerminan hardware yang
  * benar-benar ada. Dashboard admin dan kiosk menunjuk unit yang sama, jadi apa
  * pun yang terjadi di kiosk langsung terlihat di dashboard tanpa salah unit.
  *
@@ -28,7 +28,7 @@ use Illuminate\Support\Collection;
 class DatabaseSeeder extends Seeder
 {
     /** Kode unit prototype — sama dengan VITE_UNIT_CODE di frontend-kiosk. */
-    public const UNIT_CODE = 'BNB-001';
+    public const UNIT_CODE = 'BNX-001';
 
     public function run(): void
     {
@@ -46,7 +46,7 @@ class DatabaseSeeder extends Seeder
         AdminUser::create([
             'school_id' => null,
             'name' => 'Super Admin',
-            'email' => 'admin@bunnybin.id',
+            'email' => 'admin@binexa.id',
             'password' => env('SEED_ADMIN_PASSWORD', 'password'),
             'role' => AdminUser::ROLE_SUPER_ADMIN,
         ]);

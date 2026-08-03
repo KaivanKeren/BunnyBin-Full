@@ -39,7 +39,7 @@ export function Login() {
       <div className="w-full max-w-sm rounded-2xl bg-white p-8 shadow-sm">
         <div className="mb-6 text-center">
           <div className="text-3xl">🐰</div>
-          <h1 className="mt-2 text-xl font-bold text-slate-800">BunnyBin Admin</h1>
+          <h1 className="mt-2 text-xl font-bold text-slate-800">Binexa Admin</h1>
           <p className="text-sm text-slate-500">Masuk untuk memantau bin sekolah</p>
         </div>
 
@@ -52,7 +52,7 @@ export function Login() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:border-emerald-500 focus:outline-none"
-              placeholder="admin@bunnybin.id"
+              placeholder="admin@binexa.id"
             />
           </label>
 

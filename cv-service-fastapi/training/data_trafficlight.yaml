@@ -4,7 +4,7 @@
 # oleh resolve_category() di app/config.py (fallback kata-kunci), jadi tak perlu
 # ubah LABEL_MAP. Frontend prettyLabel membuang prefiks → "Kulit Pisang", dll.
 #
-# Latih:  python train.py --data data_trafficlight.yaml --name bunnybin-buah --fraction 0.4 --imgsz 320 --epochs 20
+# Latih:  python train.py --data data_trafficlight.yaml --name binexa-buah --fraction 0.4 --imgsz 320 --epochs 20
 
 path: /mnt/Projects/BunnyBin-V2/cv-service-fastapi/training/trafficlight_ds
 train: train/images

@@ -15,7 +15,7 @@ class UnitFactory extends Factory
     {
         return [
             'school_id' => School::factory(),
-            'code' => 'BNB-'.str_pad((string) fake()->unique()->numberBetween(1, 999), 3, '0', STR_PAD_LEFT),
+            'code' => 'BNX-'.str_pad((string) fake()->unique()->numberBetween(1, 999), 3, '0', STR_PAD_LEFT),
             'location_label' => fake()->randomElement(['Kelas 1A', 'Kelas 3A', 'Kantin', 'Perpustakaan', 'Lapangan']),
             'status' => Unit::STATUS_ACTIVE,
             'last_seen_at' => now(),

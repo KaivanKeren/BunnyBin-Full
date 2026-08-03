@@ -56,14 +56,14 @@ Anotasi bounding-box paling mudah via **Roboflow** (gratis):
 ```bash
 cd cv-service-fastapi/training
 ../.venv-real/bin/python train.py \
-    --data data_named.yaml --name bunnybin-named \
+    --data data_named.yaml --name binexa-named \
     --epochs 100 --imgsz 640 --device 0     # --device cpu bila tanpa GPU
 ```
 Auto-resume bila terputus (jalankan ulang perintah yang sama).
 
 ### 3. Deploy
 ```bash
-cp runs/bunnybin-named/weights/best.pt ../models/best.pt
+cp runs/binexa-named/weights/best.pt ../models/best.pt
 ```
 Set CV service ke mode lokal:
 ```

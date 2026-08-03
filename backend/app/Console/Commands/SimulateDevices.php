@@ -12,7 +12,7 @@ use PhpMqtt\Client\Facades\MQTT;
 
 /**
  * Simulator "IoT" — pengganti hardware fisik yang belum ada. Untuk tiap unit
- * ACTIVE ia mem-publish pesan MQTT (bunnybin/{code}/{sensor|sort|heartbeat})
+ * ACTIVE ia mem-publish pesan MQTT (binexa/{code}/{sensor|sort|heartbeat})
  * PERSIS seperti device sungguhan, sehingga mengalir lewat pipeline nyata:
  * mqtt:listen → ProcessSensorReading → DB → dashboard. Tidak menulis DB langsung
  * (kecuali event pengosongan oleh "petugas"), supaya simulasi benar-benar akurat.
@@ -25,7 +25,7 @@ class SimulateDevices extends Command
         {--interval=5 : Jeda detik antar tick}
         {--once : Jalankan satu tick lalu berhenti (untuk uji)}';
 
-    protected $description = 'Simulasikan device BunnyBin dengan mem-publish MQTT ke pipeline nyata (tanpa hardware)';
+    protected $description = 'Simulasikan device Binexa dengan mem-publish MQTT ke pipeline nyata (tanpa hardware)';
 
     /** @var array<string, array{organic:int, inorganic:int}> state fill per unit code */
     private array $fill = [];
@@ -40,7 +40,7 @@ class SimulateDevices extends Command
             return self::FAILURE;
         }
 
-        $this->info('Simulator device BunnyBin aktif (Ctrl+C untuk berhenti). '.
+        $this->info('Simulator device Binexa aktif (Ctrl+C untuk berhenti). '.
             'Publish ke broker MQTT tiap '.$this->option('interval').' detik.');
 
         do {
@@ -144,7 +144,7 @@ class SimulateDevices extends Command
      */
     private function publish(Unit $unit, string $channel, array $payload): void
     {
-        MQTT::publish("bunnybin/{$unit->code}/{$channel}", json_encode($payload));
+        MQTT::publish("binexa/{$unit->code}/{$channel}", json_encode($payload));
     }
 
     /**

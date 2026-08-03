@@ -11,7 +11,7 @@ beforeEach(function () {
     // Geometri eksplisit: kosong terbaca 65 cm, penuh 5 cm, 1 cm = 1.667%.
     $this->unit = Unit::factory()->create([
         'school_id' => School::factory()->create()->id,
-        'code' => 'BNB-001',
+        'code' => 'BNX-001',
         'last_seen_at' => now()->subHour(),
         'bin_height_cm' => 60,
         'sensor_offset_cm' => 5,
@@ -27,7 +27,7 @@ it('stores a fill snapshot from relayed distances and returns backend percentage
     actingAsUnit($this->unit);
 
     // 35 cm dari sensor = 30 cm terisi dari tinggi 60 cm = 50%.
-    $this->postJson('/api/units/BNB-001/fill', [
+    $this->postJson('/api/units/BNX-001/fill', [
         'organic_distance_cm' => 35,
         'inorganic_distance_cm' => 20,
     ])
@@ -46,7 +46,7 @@ it('stores a fill snapshot from relayed distances and returns backend percentage
 it('rejects an out-of-range reading and raises a sensor alert instead of storing it', function () {
     actingAsUnit($this->unit);
 
-    $this->postJson('/api/units/BNB-001/fill', [
+    $this->postJson('/api/units/BNX-001/fill', [
         'organic_distance_cm' => 300, // jauh di luar tong 65 cm → sensor bermasalah
         'inorganic_distance_cm' => 20,
     ])
@@ -64,7 +64,7 @@ it('stores a sort log posted by the kiosk', function () {
     actingAsUnit($this->unit);
     $quizItem = QuizItem::factory()->create(['category' => 'organic']);
 
-    $this->postJson('/api/units/BNB-001/sort-logs', [
+    $this->postJson('/api/units/BNX-001/sort-logs', [
         'quiz_item_id' => $quizItem->id,
         'category_detected' => 'organic',
         'confidence' => 0.91,
@@ -83,7 +83,7 @@ it('accepts a sort log without a detected category when CV was unavailable', fun
     actingAsUnit($this->unit);
     $quizItem = QuizItem::factory()->create(['category' => 'inorganic']);
 
-    $this->postJson('/api/units/BNB-001/sort-logs', [
+    $this->postJson('/api/units/BNX-001/sort-logs', [
         'quiz_item_id' => $quizItem->id,
         'category_detected' => null,
         'confidence' => null,
@@ -104,7 +104,7 @@ it('records the kiosk timestamp so queued logs land at the time they happened', 
     $quizItem = QuizItem::factory()->create(['category' => 'organic']);
     $happenedAt = now()->subMinutes(20);
 
-    $this->postJson('/api/units/BNB-001/sort-logs', [
+    $this->postJson('/api/units/BNX-001/sort-logs', [
         'quiz_item_id' => $quizItem->id,
         'category_detected' => 'organic',
         'is_correct' => true,
@@ -118,7 +118,7 @@ it('brings an offline unit back online on heartbeat', function () {
     $this->unit->update(['status' => Unit::STATUS_OFFLINE]);
     actingAsUnit($this->unit);
 
-    $this->postJson('/api/units/BNB-001/heartbeat')
+    $this->postJson('/api/units/BNX-001/heartbeat')
         ->assertOk()
         ->assertJson(['status' => Unit::STATUS_ACTIVE]);
 
@@ -128,11 +128,11 @@ it('brings an offline unit back online on heartbeat', function () {
 it('forbids a unit token from writing to another unit', function () {
     $other = Unit::factory()->create([
         'school_id' => School::factory()->create()->id,
-        'code' => 'BNB-002',
+        'code' => 'BNX-002',
     ]);
     actingAsUnit($this->unit);
 
-    $this->postJson('/api/units/BNB-002/fill', [
+    $this->postJson('/api/units/BNX-002/fill', [
         'organic_distance_cm' => 35,
         'inorganic_distance_cm' => 20,
     ])->assertForbidden();
@@ -144,16 +144,16 @@ it('rejects callers that are not kiosk unit tokens', function () {
     $payload = ['organic_distance_cm' => 35, 'inorganic_distance_cm' => 20];
 
     // Tanpa auth sama sekali
-    $this->postJson('/api/units/BNB-001/fill', $payload)->assertUnauthorized();
+    $this->postJson('/api/units/BNX-001/fill', $payload)->assertUnauthorized();
 
     // Session admin lolos auth:sanctum tapi bukan device — harus ditolak.
     $this->actingAs(AdminUser::factory()->superAdmin()->create())
-        ->postJson('/api/units/BNB-001/fill', $payload)
+        ->postJson('/api/units/BNX-001/fill', $payload)
         ->assertForbidden();
 
     // Token unit yang abilitynya bukan 'kiosk' (mis. token diagnostik)
     Sanctum::actingAs($this->unit, ['diagnostics']);
-    $this->postJson('/api/units/BNB-001/fill', $payload)->assertForbidden();
+    $this->postJson('/api/units/BNX-001/fill', $payload)->assertForbidden();
 
     $this->assertDatabaseCount('fill_snapshots', 0);
 });
@@ -161,7 +161,7 @@ it('rejects callers that are not kiosk unit tokens', function () {
 it('requires either a distance or a percentage per compartment', function () {
     actingAsUnit($this->unit);
 
-    $this->postJson('/api/units/BNB-001/fill', [])
+    $this->postJson('/api/units/BNX-001/fill', [])
         ->assertUnprocessable()
         ->assertJsonValidationErrors(['organic_distance_cm', 'inorganic_distance_cm']);
 });

@@ -1,4 +1,4 @@
-"""Latih model YOLO-classification untuk BunnyBin dari dataset garbage-classification-v2.
+"""Latih model YOLO-classification untuk Binexa dari dataset garbage-classification-v2.
 
 Prasyarat: jalankan prepare_cls_dataset.py dulu untuk membuat folder split
 `dataset_cls/{train,val}/<kelas>/`.

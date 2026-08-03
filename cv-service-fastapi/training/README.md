@@ -1,4 +1,4 @@
-# Melatih & Menyiapkan Model YOLO BunnyBin
+# Melatih & Menyiapkan Model YOLO Binexa
 
 Panduan menyiapkan model deteksi objek (organik/anorganik) untuk CV service.
 Ada **dua jalur**: model **demo** (bisa diuji sekarang) dan model **kustom produksi**.
@@ -91,14 +91,14 @@ python train.py --epochs 40 --imgsz 416           # dataset publik di atas (gamb
 python train.py --epochs 100 --imgsz 640          # data sendiri, CPU (lambat)
 python train.py --epochs 200 --model yolov8s.pt --device 0   # GPU, model lebih besar
 ```
-Hasil terbaik: `runs/detect/bunnybin*/weights/best.pt`.
+Hasil terbaik: `runs/detect/binexa*/weights/best.pt`.
 
 > **Catatan CPU:** melatih di CPU jauh lebih lambat & akurasinya terbatas oleh
 > epoch/subset. Untuk produksi, gunakan GPU + dataset penuh + epoch lebih banyak.
 
 ### c. Deploy
 ```bash
-cp runs/detect/bunnybin*/weights/best.pt ../models/best.pt
+cp runs/detect/binexa*/weights/best.pt ../models/best.pt
 cd ../.. && CV_MODE=real CV_MODEL_PATH=models/best.pt uvicorn app.main:app
 ```
 
