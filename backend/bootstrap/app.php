@@ -14,7 +14,14 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->statefulApi();
 
+        // Laravel 11+ tidak lagi memasang throttle:api secara otomatis — tanpa
+        // baris ini SELURUH API berjalan tanpa batas laju, termasuk /auth/login.
+        // Definisi limiter 'api' ada di AppServiceProvider (wajib: throttleApi()
+        // melempar MissingRateLimiterException bila limiternya tidak terdaftar).
+        $middleware->throttleApi();
+
         $middleware->alias([
+            'admin' => \App\Http\Middleware\EnsureAdminUser::class,
             'role' => \App\Http\Middleware\EnsureRole::class,
             'kiosk.unit' => \App\Http\Middleware\EnsureKioskUnit::class,
         ]);

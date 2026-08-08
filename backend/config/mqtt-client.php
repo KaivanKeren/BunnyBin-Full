@@ -118,6 +118,42 @@ return [
 
         ],
 
+        /*
+        |----------------------------------------------------------------------
+        | Koneksi simulator (DEV SAJA)
+        |----------------------------------------------------------------------
+        |
+        | ACL broker mengunci tiap kredensial device ke prefix topiknya sendiri,
+        | dan akun backend ('default') sengaja hanya punya izin BACA. Simulator
+        | berpura-pura menjadi SEMUA unit aktif sekaligus, jadi ia butuh akun
+        | terpisah yang boleh menulis ke seluruh binexa/#.
+        |
+        | Kewenangan itu persis yang baru saja dicabut dari penyerang, jadi akun
+        | ini TIDAK BOLEH ADA di broker produksi — lihat docker/mosquitto/acl.
+        | Memisahkannya sebagai koneksi tersendiri (bukan melonggarkan 'default')
+        | menjaga agar backend produksi tetap tidak bisa memalsukan data device.
+        |
+        */
+        'simulator' => [
+            'host' => env('MQTT_HOST'),
+            'port' => env('MQTT_PORT', 1883),
+            'protocol' => MqttClient::MQTT_3_1,
+            'client_id' => env('MQTT_SIMULATOR_CLIENT_ID'),
+            'use_clean_session' => true,
+            'enable_logging' => env('MQTT_ENABLE_LOGGING', true),
+            'repository' => MemoryRepository::class,
+            'connection_settings' => [
+                'auth' => [
+                    'username' => env('MQTT_SIMULATOR_USERNAME'),
+                    'password' => env('MQTT_SIMULATOR_PASSWORD'),
+                ],
+                'connect_timeout' => env('MQTT_CONNECT_TIMEOUT', 60),
+                'socket_timeout' => env('MQTT_SOCKET_TIMEOUT', 5),
+                'resend_timeout' => env('MQTT_RESEND_TIMEOUT', 10),
+                'keep_alive_interval' => env('MQTT_KEEP_ALIVE_INTERVAL', 10),
+            ],
+        ],
+
     ],
 
 ];

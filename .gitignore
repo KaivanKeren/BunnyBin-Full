@@ -7,3 +7,8 @@ docs/
 # Rahasia Docker — JANGAN commit API key. Pakai .env.roboflow.example sbagai templat.
 docker/.env.roboflow
 docker/.env
+
+# Hash password broker MQTT. Templat + cara generate ada di passwd.example.
+# `acl` sengaja TIDAK diabaikan: ia kebijakan, bukan kredensial, dan justru
+# perlu ditinjau lewat review.
+docker/mosquitto/passwd

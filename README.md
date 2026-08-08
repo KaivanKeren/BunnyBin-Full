@@ -285,13 +285,23 @@ php artisan simulate:devices --once       # satu tick lalu berhenti (untuk uji)
 
 Simulator mem-publish `sensor`, `sort`, dan `heartbeat` untuk tiap unit berstatus `active`. Buka Admin Dashboard untuk melihat fill level naik, sort log bertambah, dan alert muncul saat threshold tercapai.
 
-**Token kiosk untuk mode real** (kiosk memakai Sanctum token per-unit dengan ability `kiosk`):
+**Mengaktifkan kiosk untuk mode real.** Kiosk mengambil tokennya sendiri lewat kode
+aktivasi sekali pakai — token TIDAK lagi ditaruh di `.env`:
 
 ```bash
-php artisan unit:token BNX-001
-# Salin token ke frontend-kiosk/.env → VITE_KIOSK_API_TOKEN=...
-# dan setel VITE_UNIT_CODE=BNX-001, VITE_USE_MOCK=false
+# 1. Admin menerbitkan kode (berlaku 24 jam, sekali pakai)
+php artisan unit:activation-code BNX-001
+
+# 2. Setel frontend-kiosk/.env → VITE_USE_MOCK=false, lalu buka kiosk
+# 3. Masukkan kodenya di layar aktivasi
 ```
+
+Token dan `unit_code` tersimpan di `localStorage` perangkat itu saja. Ini disengaja: semua
+variabel `VITE_*` di-inline ke dalam bundle JavaScript saat build, jadi token yang lewat
+`.env` akan terbaca siapa pun yang membuka DevTools di tablet kiosk.
+
+Mengaktifkan ulang perangkat otomatis mencabut token lamanya, sehingga tablet yang hilang
+tidak tetap bisa menulis data. Token berlaku 180 hari (`SANCTUM_TOKEN_EXPIRATION`).
 
 ---
 
@@ -301,17 +311,27 @@ php artisan unit:token BNX-001
 
 | Peran | Email | Password | Akses |
 |---|---|---|---|
-| Super Admin | `admin@binexa.id` | `password` | Semua sekolah, semua unit, kelola kuis & sekolah |
-| School Admin | (email admin sekolah tiap seed) | `password` | Hanya sekolah miliknya |
+| Super Admin | `admin@binexa.id` | `SEED_ADMIN_PASSWORD` | Semua sekolah, semua unit, kelola kuis & sekolah |
+| School Admin | `admin@sdn1kudus.sch.id` | `SEED_ADMIN_PASSWORD` | Hanya sekolah miliknya |
 
-> Password default berasal dari `SEED_ADMIN_PASSWORD` (default `password`). **Ganti di produksi.**
+> ⚠️ **`SEED_ADMIN_PASSWORD` wajib diisi di `.env`** — tidak ada nilai default, dan `db:seed`
+> akan gagal bila kosong. Email super admin sudah pasti, jadi password yang bisa ditebak
+> berarti akun itu bisa diambil alih dalam satu percobaan.
 
-**Sekolah & unit contoh:**
+**Sekolah & unit yang dibuat:**
 
-- **SDN 1 Kudus** — `BNX-001` (Kelas 3A, active), `BNX-002` (Kantin, active), `BNX-003` (Perpustakaan, maintenance)
-- **SDN 2 Demak** — `BNX-004` (Lapangan, active), `BNX-005` (UKS, offline)
+- **SDN 1 Kudus** — satu unit `BNX-001` (Kantin), status `offline`, `last_seen_at` null
 
-Seed juga mengisi bank kuis, sebagian riwayat sortir, maintenance event, dan alert contoh.
+Seeder hanya mengisi **data master**: sekolah, dua akun admin, bank kuis (10 item), dan
+pendaftaran unit. Tidak ada satu pun fill snapshot, sort log, alert, atau maintenance event —
+semuanya harus lahir dari pembacaan ESP32 sungguhan lewat pipeline ingest, supaya setiap angka
+di dashboard bisa dipercaya sebagai hasil pengukuran, bukan karangan seeder.
+
+Setelah seed, terbitkan kode aktivasi kiosk untuk unit tersebut:
+
+```bash
+php artisan unit:activation-code BNX-001
+```
 
 ---
 
@@ -394,10 +414,25 @@ Base URL: `/api` — Auth: **Laravel Sanctum**.
 |---|---|
 | `VITE_USE_MOCK` | `true` = jalan tanpa backend; `false` = real mode |
 | `VITE_API_URL` | endpoint API Laravel |
-| `VITE_KIOSK_API_TOKEN` | Sanctum token per-unit (`php artisan unit:token`) |
-| `VITE_UNIT_CODE` | kode unit device ini (mis. `BNX-001`) |
 | `VITE_ESP32_BASE_URL` | endpoint ESP32 lokal |
+| `VITE_FILL_RELAY_MS` | jeda relay pembacaan ESP32 → cloud (ms) |
 | `VITE_DEBUG_PANEL` | panel debug — **jangan `true` di produksi** |
+
+> Tidak ada variabel token/`unit_code` di sini, dan jangan ditambahkan: variabel `VITE_*`
+> di-inline ke bundle publik. Kredensial kiosk lahir saat aktivasi — lihat [§7](#7-menjalankan-tanpa-hardware-mode-simulasi).
+
+### Broker MQTT (`backend/.env`)
+
+| Variabel | Keterangan |
+|---|---|
+| `MQTT_AUTH_USERNAME` / `MQTT_AUTH_PASSWORD` | akun subscriber `mqtt:listen` (akses **baca** `binexa/#`) |
+| `MQTT_SIMULATOR_USERNAME` / `MQTT_SIMULATOR_PASSWORD` | akun `simulate:devices` — **dev saja**, jangan ada di produksi |
+| `CV_INTERNAL_TOKEN` | shared secret ke CV service; harus sama di kedua sisi |
+| `SANCTUM_TOKEN_EXPIRATION` | masa berlaku token dalam menit (default 259200 = 180 hari) |
+
+Broker tidak lagi anonim. Kredensial dibuat dari `docker/mosquitto/passwd.example`, dan
+`docker/mosquitto/acl` mengunci tiap unit ke prefix topiknya sendiri — itu yang mencegah
+satu device menulis atas nama device lain.
 
 ---
 

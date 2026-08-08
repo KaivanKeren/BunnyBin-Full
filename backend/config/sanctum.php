@@ -50,7 +50,23 @@ return [
     |
     */
 
-    'expiration' => null,
+    /*
+     * Token kiosk sebelumnya berlaku SELAMANYA (null). Digabung dengan token
+     * yang ter-inline ke bundle JavaScript, artinya satu kali bocor = akses
+     * permanen ke unit itu, tanpa cara mencabutnya selain rotasi manual.
+     *
+     * Provisioning saat runtime (POST /devices/activate) yang membuat batas
+     * waktu ini masuk akal: perangkat bisa mengambil token barunya sendiri
+     * lewat kode aktivasi, jadi kedaluwarsa tidak lagi berarti rebuild bundle.
+     *
+     * 180 hari, bukan 30: memperbarui token menuntut seseorang datang ke tong
+     * sampah membawa kode baru. Siklus bulanan akan berakhir dengan orang
+     * mematikan fitur ini; satu semester sekali adalah jadwal yang benar-benar
+     * akan dijalankan sekolah, dan tetap membatasi umur token yang bocor.
+     *
+     * Satuan MENIT (bawaan Sanctum): 180 hari = 259200 menit.
+     */
+    'expiration' => env('SANCTUM_TOKEN_EXPIRATION', 259200),
 
     /*
     |--------------------------------------------------------------------------

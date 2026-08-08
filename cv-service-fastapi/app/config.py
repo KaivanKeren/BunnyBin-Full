@@ -154,6 +154,11 @@ class Settings(BaseSettings):
     cv_confidence_threshold: float = 0.6
     cv_max_image_mb: int = 5
     cv_model_path: str = "/model/best.pt"
+    # Shared secret yang harus dikirim Laravel di header X-Internal-Token.
+    # WAJIB diisi — layanan menolak start bila kosong (lihat app/main.py).
+    # Tidak ada nilai default: default apa pun akan jadi kunci yang diketahui
+    # publik, dan itu sama saja dengan tidak ada autentikasi.
+    cv_internal_token: str = ""
     # Roboflow Cloud API (hosted inference)
     roboflow_api_url: str = "https://detect.roboflow.com"
     roboflow_model_id: str = ""

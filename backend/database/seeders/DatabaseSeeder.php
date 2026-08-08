@@ -32,6 +32,8 @@ class DatabaseSeeder extends Seeder
 
     public function run(): void
     {
+        $password = $this->adminPassword();
+
         $this->seedQuizItems();
 
         $school = School::create([
@@ -47,7 +49,7 @@ class DatabaseSeeder extends Seeder
             'school_id' => null,
             'name' => 'Super Admin',
             'email' => 'admin@binexa.id',
-            'password' => env('SEED_ADMIN_PASSWORD', 'password'),
+            'password' => $password,
             'role' => AdminUser::ROLE_SUPER_ADMIN,
         ]);
 
@@ -55,7 +57,7 @@ class DatabaseSeeder extends Seeder
             'school_id' => $school->id,
             'name' => 'Admin SDN 1 Kudus',
             'email' => 'admin@sdn1kudus.sch.id',
-            'password' => env('SEED_ADMIN_PASSWORD', 'password'),
+            'password' => $password,
             'role' => AdminUser::ROLE_SCHOOL_ADMIN,
         ]);
 
@@ -82,6 +84,33 @@ class DatabaseSeeder extends Seeder
         $this->command?->info("Unit prototype {$unit->code} terdaftar (belum pernah melapor).");
         $this->command?->info("Terbitkan token kiosk: php artisan unit:token {$unit->code}");
         $this->command?->info('Fill, sort log, dan alert akan terisi sendiri begitu ESP32 mengirim data.');
+    }
+
+    /**
+     * Password akun admin seed WAJIB datang dari environment.
+     *
+     * Sebelumnya nilainya jatuh diam-diam ke 'password' bila variabelnya tidak
+     * di-set. Kombinasinya berbahaya: email akun super admin sudah pasti
+     * (admin@binexa.id, tertulis di sini dan di README), jadi instance mana pun
+     * yang di-seed tanpa mengisi SEED_ADMIN_PASSWORD bisa diambil alih dalam
+     * satu percobaan — tanpa satu pun tanda bahwa ada yang salah.
+     *
+     * Gagal keras di sini adalah kegagalan yang benar: lebih baik `db:seed`
+     * berhenti dan memberi tahu apa yang kurang daripada berhasil sambil
+     * membuat akun yang bisa ditebak.
+     */
+    private function adminPassword(): string
+    {
+        $password = env('SEED_ADMIN_PASSWORD');
+
+        if (! is_string($password) || trim($password) === '') {
+            throw new RuntimeException(
+                'SEED_ADMIN_PASSWORD wajib diisi sebelum menjalankan db:seed — '.
+                'tidak ada password default. Set di .env, lalu ulangi.'
+            );
+        }
+
+        return $password;
     }
 
     /**

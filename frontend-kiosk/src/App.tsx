@@ -1,11 +1,13 @@
 // src/App.tsx — shell kiosk: device frame + router-by-phase.
 import { AnimatePresence } from 'framer-motion'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import StatusBar from '@/components/StatusBar'
 import { config } from '@/api/config'
+import { readCredentials } from '@/api/credentials'
 import DebugPanel from '@/debug/DebugPanel'
 import { KioskProvider } from '@/context/KioskProvider'
 import { useKiosk } from '@/context/kioskContext'
+import ActivationScreen from '@/screens/ActivationScreen'
 import ErrorScreen from '@/screens/ErrorScreen'
 import FullLockScreen from '@/screens/FullLockScreen'
 import IdleScreen from '@/screens/IdleScreen'
@@ -33,6 +35,10 @@ function Stage() {
 }
 
 export default function App() {
+  // Mode mock tidak pernah menyentuh cloud, jadi ia tidak butuh kredensial —
+  // memaksa aktivasi di sana hanya akan mematikan alur demo tanpa backend.
+  const [activated, setActivated] = useState(() => config.useMock || readCredentials() !== null)
+
   // Kiosk: blokir context menu (UI-08). Fullscreen di-request saat gesture pertama.
   useEffect(() => {
     const noMenu = (e: Event) => e.preventDefault()
@@ -42,6 +48,22 @@ export default function App() {
 
   const requestFullscreen = () => {
     if (!document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => {})
+  }
+
+  // Sengaja di LUAR KioskProvider: provider langsung memulai polling ESP32,
+  // relay fill, dan pemuatan bank kuis saat mount. Menjalankannya sebelum ada
+  // token berarti serentetan 401 dan banner offline di layar aktivasi.
+  if (!activated) {
+    return (
+      <div className="flex h-screen w-screen items-center justify-center bg-[#2b211a] p-4">
+        <div
+          className="relative w-full max-w-[1024px] overflow-hidden rounded-[28px] border-[10px] border-[#1a1410] bg-canvas shadow-2xl"
+          style={{ aspectRatio: '1024 / 600' }}
+        >
+          <ActivationScreen onActivated={() => setActivated(true)} />
+        </div>
+      </div>
+    )
   }
 
   return (

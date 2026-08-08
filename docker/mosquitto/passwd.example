@@ -1,0 +1,28 @@
+# TEMPLAT — `passwd` yang asli GITIGNORED karena berisi hash password.
+#
+# Berkas nyata dibuat dengan mosquitto_passwd, bukan diketik tangan. Dari root repo:
+#
+#   cd docker/mosquitto
+#   : > passwd
+#   docker run --rm -v "$PWD:/w" -w /w eclipse-mosquitto:2 sh -c '
+#     mosquitto_passwd -b /w/passwd binexa-backend   "<password-backend>" &&
+#     mosquitto_passwd -b /w/passwd bnx-001          "<password-device>"  &&
+#     mosquitto_passwd -b /w/passwd binexa-simulator "<password-simulator>"'
+#
+# Lalu isi MQTT_AUTH_USERNAME / MQTT_AUTH_PASSWORD di backend/.env dengan
+# kredensial `binexa-backend` (subscriber mqtt:listen memakai akun itu).
+#
+# User yang harus ada — daftar lengkapnya beserta kewenangannya ada di `acl`:
+#
+#   binexa-backend     baca  binexa/#              subscriber mqtt:listen
+#   bnx-001            tulis binexa/BNX-001/#      device; satu akun per unit
+#   binexa-simulator   tulis binexa/#              DEV SAJA — jangan ada di produksi
+#
+# Menambah unit: satu entri mosquitto_passwd + satu blok user di `acl`.
+#
+# CATATAN PRODUKSI: mosquitto mengharapkan berkas ini 0700 dan milik root, dan
+# versi mendatang akan MENOLAK memuatnya bila tidak. Di repo ini berkas berada di
+# volume fuseblk yang permission-nya tidak bisa diubah, jadi broker dev hanya
+# memberi peringatan. Di server produksi, letakkan di volume Linux biasa lalu:
+#
+#   chown root:root passwd acl && chmod 0700 passwd acl
