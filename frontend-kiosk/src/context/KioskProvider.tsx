@@ -19,6 +19,7 @@ import { mockControls } from '@/api/mock/mockControls'
 import { useCamera } from '@/hooks/useCamera'
 import { useRealtimeDetection } from '@/hooks/useRealtimeDetection'
 import { playClick, playError, playSuccess } from '@/lib/sound'
+import { decideAnswer } from '@/machine/answerDecision'
 import {
   fillLocked,
   initialState,
@@ -81,6 +82,8 @@ export function KioskProvider({ children }: { children: ReactNode }) {
   const scanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const bestDetectionRef = useRef<CvDetection | null>(null)
   const cameraReadyRef = useRef(false)
+  /** Sudah menggerakkan servo untuk benda yang sedang diproses? */
+  const sortedRef = useRef(false)
 
   // Sync camera ready state into ref (avoids stale closure in polling loops)
   useEffect(() => {
@@ -97,6 +100,30 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     if (fillLocked(fill)) dispatch({ type: 'FULL_LOCK' })
     else dispatch({ type: 'FULL_RELEASE' })
   }, [])
+
+  /**
+   * Gerakkan servo, sekali saja per benda.
+   *
+   * Penjaga sortedRef diperlukan karena sekarang ADA DUA jalan menuju sortir:
+   * jawaban benar, dan sortir pengaman saat layar penjelasan habis waktunya.
+   * Tanpa penjaga, anak yang menjawab salah lalu benar akan menggerakkan servo
+   * dua kali untuk satu benda — dan MG996R yang bergerak sia-sia adalah keausan
+   * mekanis yang bisa dihindari.
+   */
+  const sortTrash = useCallback(
+    async (category: WasteCategory) => {
+      if (sortedRef.current) return
+      sortedRef.current = true
+
+      try {
+        await clients.esp32.sort({ category })
+        dispatch({ type: 'SET_ESP32_OFFLINE', offline: false })
+      } catch {
+        dispatch({ type: 'SET_ESP32_OFFLINE', offline: true })
+      }
+    },
+    [clients],
+  )
 
   // --- Muat quiz bank ---
   useEffect(() => {
@@ -213,10 +240,25 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     if (state.phase === 'error') {
       camera.stop()
       realtimeDetection.stop()
-      const t = setTimeout(() => dispatch({ type: 'RESET' }), ERROR_AUTO_MS)
+
+      // SORTIR PENGAMAN. Anak yang menjawab salah lalu pergi meninggalkan
+      // sampahnya menggantung di tray netral: dulu jalur ini tidak pernah
+      // memanggil esp32.sort() sama sekali, jadi benda itu tidak masuk ke tong
+      // mana pun dan tong berikutnya mewarisi kekacauannya.
+      //
+      // Kategorinya diambil dari DETEKSI, bukan dari jawaban anak yang keliru.
+      // sortTrash() no-op bila anak sempat kembali dan menjawab benar.
+      const t = setTimeout(() => {
+        const detected = stateRef.current.detection?.category ?? null
+        void (async () => {
+          if (detected !== null) await sortTrash(detected)
+          dispatch({ type: 'RESET' })
+        })()
+      }, ERROR_AUTO_MS)
+
       return () => clearTimeout(t)
     }
-  }, [state.phase, camera, realtimeDetection])
+  }, [state.phase, camera, realtimeDetection, sortTrash])
 
   // Cleanup camera on unmount
   useEffect(() => {
@@ -270,28 +312,39 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     cake: ['Roti'],
   }
 
+  /**
+   * Pilih pertanyaan kuis untuk objek yang BENAR-BENAR terdeteksi.
+   *
+   * Dulu fungsi ini berakhir dengan `randomFrom(bank)` — acak dari SELURUH bank,
+   * lintas kategori — setiap kali confidence rendah atau CV gagal. Akibatnya
+   * fatal: anak memegang botol plastik, ditanya soal "Kulit pisang", menjawab
+   * "organik" (jawaban BENAR untuk pertanyaan itu), dan botolnya masuk tray
+   * organik sambil dicatat sebagai sortiran yang benar. Dashboard melaporkan
+   * keberhasilan atas pemilahan yang secara fisik salah.
+   *
+   * Sekarang: tanpa kategori terdeteksi, TIDAK ADA pertanyaan yang jujur untuk
+   * diajukan. Kembalikan null, dan pemanggil beralih ke mode manual.
+   */
   const pickItem = useCallback((detection: CvDetection): QuizItem | null => {
-    const bank = quizItemsRef.current
+    if (!detection.category) return null
 
-    // High confidence + has label → try to match specific quiz item
-    if (detection.category && detection.confidence >= HIGH_CONFIDENCE && detection.label) {
+    const scoped = quizItemsRef.current.filter((q) => q.category === detection.category)
+    if (!scoped.length) return null
+
+    // Confidence tinggi + label spesifik → coba tanyakan benda yang persis itu.
+    if (detection.confidence >= HIGH_CONFIDENCE && detection.label) {
       const keywords = LABEL_TO_QUIZ[detection.label.toLowerCase()]
       if (keywords) {
-        const scoped = bank.filter(
-          (q) =>
-            q.category === detection.category &&
-            keywords.some((kw) => q.item_name.toLowerCase().includes(kw.toLowerCase())),
+        const matched = scoped.filter((q) =>
+          keywords.some((kw) => q.item_name.toLowerCase().includes(kw.toLowerCase())),
         )
-        if (scoped.length) return randomFrom(scoped)
+        if (matched.length) return randomFrom(matched)
       }
-
-      // No keyword match → random from same category
-      const scoped = bank.filter((q) => q.category === detection.category)
-      if (scoped.length) return randomFrom(scoped)
     }
 
-    // Low confidence or no detection → random from all
-    return randomFrom(bank)
+    // Tidak ada padanan label — tetap dalam KATEGORI yang terdeteksi, jadi
+    // jawaban benarnya tetap sama dengan isi tong yang sesungguhnya.
+    return randomFrom(scoped)
   }, [])
 
   // --- Alur: masukkan sampah → scan (real-time) → question ---
@@ -302,6 +355,8 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'SCAN_START' })
 
     bestDetectionRef.current = null
+    // Benda baru → servo boleh bergerak lagi.
+    sortedRef.current = false
 
     // Start camera
     void camera.start()
@@ -326,7 +381,13 @@ export function KioskProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      // No detection at all — pick random item
+      // Tidak ada deteksi sama sekali → MODE MANUAL, bukan reset.
+      //
+      // Dulu jalur ini memilih quiz item acak dari seluruh bank (bisa lintas
+      // kategori) atau, bila banknya kosong, langsung RESET ke idle — sementara
+      // sampah anak sudah terlanjur masuk. Keduanya salah dengan cara berbeda:
+      // yang pertama menyortir ke tong yang keliru, yang kedua meninggalkannya
+      // tanpa disortir sama sekali. Sekarang anak yang memutuskan.
       const fallback: CvDetection = {
         category: null,
         label: null,
@@ -334,12 +395,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
         bbox: null,
         model_version: 'timeout',
       }
-      const item = pickItem(fallback)
-      if (!item) {
-        dispatch({ type: 'RESET' })
-        return
-      }
-      dispatch({ type: 'SCAN_DONE', detection: fallback, item })
+      dispatch({ type: 'SCAN_DONE', detection: fallback, item: null })
     }, SCAN_TIMEOUT_MS)
 
     // Start real-time detection loop — wait for camera to be truly ready
@@ -381,13 +437,16 @@ export function KioskProvider({ children }: { children: ReactNode }) {
             camera.stop()
             realtimeDetection.stop()
 
+            // item null = bank kuis tidak punya entri untuk kategori ini.
+            // Pertanyaannya tetap bisa diajukan (kategorinya sudah diketahui
+            // kamera) — yang hilang hanya contoh benda di layar penjelasan.
+            // RESET di sini akan membuang sampah yang sudah masuk tanpa disortir.
             const item = pickItem(confirmed)
             if (!item) {
-              console.warn('[kiosk] ⚠️ Tidak ada quiz item untuk detection ini')
-              dispatch({ type: 'RESET' })
-              return
+              console.warn('[kiosk] ⚠️ Bank kuis kosong untuk kategori', confirmed.category)
+            } else {
+              console.log('[kiosk] 🎯 Quiz item dipilih:', item.item_name, `(${item.category})`)
             }
-            console.log('[kiosk] 🎯 Quiz item dipilih:', item.item_name, `(${item.category})`)
             dispatch({ type: 'SCAN_DONE', detection: confirmed, item })
           },
         )
@@ -403,35 +462,43 @@ export function KioskProvider({ children }: { children: ReactNode }) {
   const answer = useCallback(
     (choice: WasteCategory) => {
       const st = stateRef.current
-      const item = st.item
-      if (!item || st.phase !== 'question') return
-      const detectedLog = {
-        quiz_item_id: item.id,
-        category_detected: st.detection?.category ?? null,
+      if (st.phase !== 'question') return
+
+      // KEBENARAN tentang isi tong adalah hasil deteksi kamera — bukan kategori
+      // quiz item, dan bukan pilihan anak. Servo mengikuti ini.
+      const detected = st.detection?.category ?? null
+
+      const baseLog = {
+        quiz_item_id: st.item?.id ?? null,
+        category_detected: detected,
         confidence: st.detection?.confidence ?? null,
         ts: new Date().toISOString(),
       }
 
-      if (choice === item.category) {
-        dispatch({ type: 'ANSWER_CORRECT' })
-        void (async () => {
-          try {
-            await clients.esp32.sort({ category: item.category })
-            dispatch({ type: 'SET_ESP32_OFFLINE', offline: false })
-          } catch {
-            dispatch({ type: 'SET_ESP32_OFFLINE', offline: true })
-          }
-          dispatch({ type: 'SORT_DONE' })
-          playSuccess(stateRef.current.muted)
-          void enqueueLog({ ...detectedLog, is_correct: true })
-        })()
-      } else {
+      const { sortAs, isCorrect, outcome } = decideAnswer(detected, choice)
+
+      // Jawaban salah: SENGAJA belum menyortir (sortAs null). Anak diberi
+      // penjelasan dulu dan boleh mencoba lagi — itu inti nilai edukasinya.
+      // Sampahnya tetap tersortir sesuai deteksi lewat sortir pengaman bila anak
+      // keburu pergi (lihat efek auto-reset), jadi tak ada yang tertinggal di
+      // tray netral.
+      if (outcome === 'wrong') {
         dispatch({ type: 'ANSWER_WRONG', choice })
         playError(st.muted)
-        void enqueueLog({ ...detectedLog, is_correct: false })
+        void enqueueLog({ ...baseLog, is_correct: isCorrect })
+
+        return
       }
+
+      dispatch({ type: 'ANSWER_CORRECT' })
+      void (async () => {
+        if (sortAs !== null) await sortTrash(sortAs)
+        dispatch({ type: 'SORT_DONE' })
+        playSuccess(stateRef.current.muted)
+        void enqueueLog({ ...baseLog, is_correct: isCorrect })
+      })()
     },
-    [clients, enqueueLog],
+    [enqueueLog, sortTrash],
   )
 
   const retryQuestion = useCallback(() => dispatch({ type: 'RETRY_QUESTION' }), [])
@@ -443,6 +510,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
       scanTimeoutRef.current = null
     }
     bestDetectionRef.current = null
+    sortedRef.current = false
     dispatch({ type: 'RESET' })
   }, [camera, realtimeDetection])
   const toggleMute = useCallback(() => dispatch({ type: 'TOGGLE_MUTE' }), [])
