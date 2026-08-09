@@ -1,7 +1,7 @@
 // src/context/KioskProvider.tsx
 // Orchestrator kiosk: state machine + client contracts + polling ESP32 + retry queue.
 // "Laravel selalu orchestrator" → alur CV lewat cloud.classify() (§5).
-import { useCallback, useEffect, useReducer, useRef } from 'react'
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type {
   CvDetection,
@@ -14,12 +14,14 @@ import type {
 import { config } from '@/api/config'
 import { CloudRejectedError } from '@/api/errors'
 import { getClients } from '@/api/index'
+import { SortLogQueue } from '@/api/sortLogQueue'
 import { MockEsp32Client } from '@/api/mock/MockEsp32Client'
 import { mockControls } from '@/api/mock/mockControls'
 import { useCamera } from '@/hooks/useCamera'
 import { useRealtimeDetection } from '@/hooks/useRealtimeDetection'
 import { playClick, playError, playSuccess } from '@/lib/sound'
 import { decideAnswer } from '@/machine/answerDecision'
+import { pickQuizItem } from '@/machine/pickQuizItem'
 import {
   fillLocked,
   initialState,
@@ -34,10 +36,11 @@ const SUCCESS_MS = 5000
 const ERROR_AUTO_MS = 9000
 const POLL_MS = 2000
 const RETRY_MS = 30000
-const HIGH_CONFIDENCE = 0.5
 
 const fallbackBank = quizBankRaw as unknown as QuizItem[]
 
+// Hanya dipakai Debug Panel (forcePhase) untuk memunculkan item contoh.
+// Pemilihan kuis yang sesungguhnya ada di @/machine/pickQuizItem.
 function randomFrom<T>(arr: T[]): T | null {
   return arr.length ? arr[Math.floor(Math.random() * arr.length)] : null
 }
@@ -76,7 +79,13 @@ export function KioskProvider({ children }: { children: ReactNode }) {
   }, [state])
 
   const quizItemsRef = useRef<QuizItem[]>(fallbackBank)
-  const retryQueueRef = useRef<SortLogPayload[]>([])
+  // Lazy initializer useState, bukan useRef: antrean membaca localStorage saat
+  // dibuat, dan useRef akan menjalankan konstruktornya di SETIAP render lalu
+  // membuang hasilnya. Instance-nya sendiri stabil sepanjang umur komponen.
+  //
+  // Antrean memuat isinya sendiri — log sortir yang tertahan sebelum
+  // reload/reboot langsung ada kembali di sini.
+  const [retryQueue] = useState(() => new SortLogQueue())
   const lastStatusRef = useRef<Esp32Status | null>(null)
   const cloudFillRef = useRef<Pick<Esp32Status, 'organic_pct' | 'inorganic_pct'> | null>(null)
   const scanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -91,8 +100,8 @@ export function KioskProvider({ children }: { children: ReactNode }) {
   }, [camera.state.ready])
 
   const setQueueLength = useCallback(() => {
-    dispatch({ type: 'SET_QUEUE_LENGTH', length: retryQueueRef.current.length })
-  }, [])
+    dispatch({ type: 'SET_QUEUE_LENGTH', length: retryQueue.length })
+  }, [retryQueue])
 
   const applyFill = useCallback((status: Esp32Status) => {
     const fill = displayFill(status, cloudFillRef.current)
@@ -207,27 +216,41 @@ export function KioskProvider({ children }: { children: ReactNode }) {
 
   // --- Retry queue logSort ---
   useEffect(() => {
-    const id = setInterval(async () => {
-      const queue = retryQueueRef.current
-      if (!queue.length) return
-      while (queue.length) {
+    async function flush() {
+      if (!retryQueue.length) return
+
+      while (retryQueue.length) {
+        const next = retryQueue.peek()
+        if (next === null) break
+
         try {
-          await clients.cloud.logSort(queue[0])
-          queue.shift()
+          await clients.cloud.logSort(next)
+          retryQueue.shift()
         } catch (err) {
           if (err instanceof CloudRejectedError) {
-            console.warn('[kiosk] log sortiran ditolak server, dibuang:', err.message, queue[0])
-            queue.shift()
+            console.warn('[kiosk] log sortiran ditolak server, dibuang:', err.message, next)
+            retryQueue.shift()
             continue
           }
+          // Gagal jaringan: berhenti, coba lagi di tick berikutnya. Antrean
+          // sudah tersimpan di localStorage, jadi aman melewati reload.
           break
         }
       }
-      if (!queue.length) dispatch({ type: 'SET_CLOUD_OFFLINE', offline: false })
+
+      if (!retryQueue.length) dispatch({ type: 'SET_CLOUD_OFFLINE', offline: false })
       setQueueLength()
-    }, RETRY_MS)
+    }
+
+    // Flush SEGERA saat mount, bukan menunggu tick 30 detik pertama. Antrean
+    // yang dipulihkan dari reload sering sudah menunggu lama; menahannya 30
+    // detik lagi hanya memperbesar jendela kehilangan bila tablet dimatikan.
+    setQueueLength()
+    void flush()
+
+    const id = setInterval(() => void flush(), RETRY_MS)
     return () => clearInterval(id)
-  }, [clients, setQueueLength])
+  }, [clients, retryQueue, setQueueLength])
 
   // --- Auto-reset success / error ---
   useEffect(() => {
@@ -279,7 +302,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
           console.warn('[kiosk] log sortiran ditolak server:', err.message, payload)
           return
         }
-        retryQueueRef.current.push(payload)
+        retryQueue.push(payload)
         dispatch({ type: 'SET_CLOUD_OFFLINE', offline: true })
         setQueueLength()
       }
@@ -287,65 +310,12 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     [clients, setQueueLength],
   )
 
-  // Map YOLO labels → quiz item keywords for matching detection to quiz
-  const LABEL_TO_QUIZ: Record<string, string[]> = {
-    bottle: ['Botol'],
-    cup: ['Gelas'],
-    'wine glass': ['Gelas'],
-    fork: ['Sendok'],
-    knife: ['Pisau'],
-    spoon: ['Sendok'],
-    bowl: ['Mangkuk'],
-    scissors: ['Gunting'],
-    'cell phone': ['Handphone'],
-    book: ['Buku'],
-    toothbrush: ['Sikat'],
-    banana: ['Pisang'],
-    apple: ['Apel'],
-    orange: ['Jeruk'],
-    broccoli: ['Sayur'],
-    carrot: ['Sayur'],
-    sandwich: ['Roti'],
-    'hot dog': ['Roti'],
-    pizza: ['Roti'],
-    donut: ['Roti'],
-    cake: ['Roti'],
-  }
-
-  /**
-   * Pilih pertanyaan kuis untuk objek yang BENAR-BENAR terdeteksi.
-   *
-   * Dulu fungsi ini berakhir dengan `randomFrom(bank)` — acak dari SELURUH bank,
-   * lintas kategori — setiap kali confidence rendah atau CV gagal. Akibatnya
-   * fatal: anak memegang botol plastik, ditanya soal "Kulit pisang", menjawab
-   * "organik" (jawaban BENAR untuk pertanyaan itu), dan botolnya masuk tray
-   * organik sambil dicatat sebagai sortiran yang benar. Dashboard melaporkan
-   * keberhasilan atas pemilahan yang secara fisik salah.
-   *
-   * Sekarang: tanpa kategori terdeteksi, TIDAK ADA pertanyaan yang jujur untuk
-   * diajukan. Kembalikan null, dan pemanggil beralih ke mode manual.
-   */
-  const pickItem = useCallback((detection: CvDetection): QuizItem | null => {
-    if (!detection.category) return null
-
-    const scoped = quizItemsRef.current.filter((q) => q.category === detection.category)
-    if (!scoped.length) return null
-
-    // Confidence tinggi + label spesifik → coba tanyakan benda yang persis itu.
-    if (detection.confidence >= HIGH_CONFIDENCE && detection.label) {
-      const keywords = LABEL_TO_QUIZ[detection.label.toLowerCase()]
-      if (keywords) {
-        const matched = scoped.filter((q) =>
-          keywords.some((kw) => q.item_name.toLowerCase().includes(kw.toLowerCase())),
-        )
-        if (matched.length) return randomFrom(matched)
-      }
-    }
-
-    // Tidak ada padanan label — tetap dalam KATEGORI yang terdeteksi, jadi
-    // jawaban benarnya tetap sama dengan isi tong yang sesungguhnya.
-    return randomFrom(scoped)
-  }, [])
+  // Logikanya ada di @/machine/pickQuizItem — fungsi murni yang bisa diuji tanpa
+  // merender komponen. Tabel label→kuis ada di @/lib/labelToQuiz.
+  const pickItem = useCallback(
+    (detection: CvDetection): QuizItem | null => pickQuizItem(quizItemsRef.current, detection),
+    [],
+  )
 
   // --- Alur: masukkan sampah → scan (real-time) → question ---
   const insertTrash = useCallback(() => {
@@ -554,7 +524,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'SET_CLOUD_OFFLINE', offline: mockControls.cloudOffline })
   }, [])
 
-  const pendingLogs = useCallback(() => [...retryQueueRef.current], [])
+  const pendingLogs = useCallback(() => retryQueue.snapshot(), [retryQueue])
 
   const startCamera = useCallback(() => camera.start(), [camera])
   const stopCamera = useCallback(() => camera.stop(), [camera])
