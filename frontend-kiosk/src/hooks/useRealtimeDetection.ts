@@ -1,6 +1,7 @@
 // src/hooks/useRealtimeDetection.ts
 // Real-time YOLO detection loop — capture frame → classify → track results.
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { logger } from '@/lib/logger'
 import type { CvDetection } from '@/api/contracts'
 
 export interface LiveDetection {
@@ -52,7 +53,7 @@ export function useRealtimeDetection() {
       runningRef.current = true
       reset()
 
-      console.log('[detect] 🚀 Detection loop dimulai')
+      logger.debug('[detect] 🚀 Detection loop dimulai')
       setState((s) => ({ ...s, isDetecting: true }))
 
       const loop = async () => {
@@ -71,7 +72,7 @@ export function useRealtimeDetection() {
               const fps = (frameCountRef.current / elapsed) * 1000
               frameCountRef.current = 0
               fpsTimerRef.current = now
-              console.log(`[detect] ⏱️ FPS: ${Math.round(fps)}`)
+              logger.debug(`[detect] ⏱️ FPS: ${Math.round(fps)}`)
               setState((s) => ({ ...s, fps: Math.round(fps) }))
             }
 
@@ -101,12 +102,12 @@ export function useRealtimeDetection() {
               }
 
               const best = lastConfirmedRef.current ?? detection
-              console.log(
+              logger.debug(
                 `[detect] 🎯 ${best.label} [${best.category}] ${(best.confidence * 100).toFixed(0)}% — stable: ${stableCountRef.current}/${STABLE_CONFIRM_COUNT}`,
               )
 
               if (stableCountRef.current >= STABLE_CONFIRM_COUNT) {
-                console.log('[detect] ✅ Deteksi terkonfirmasi — loop berhenti')
+                logger.debug('[detect] ✅ Deteksi terkonfirmasi — loop berhenti')
                 runningRef.current = false
                 setState((s) => ({ ...s, isDetecting: false }))
                 onConfirm(best)
@@ -114,20 +115,20 @@ export function useRealtimeDetection() {
               }
             } else {
               if (detection.category) {
-                console.log(
+                logger.debug(
                   `[detect] ⏳ ${detection.label} [${detection.category}] ${(detection.confidence * 100).toFixed(0)}% — confidence di bawah threshold, reset stable`,
                 )
               } else {
-                console.log('[detect] ⏳ Tidak terdeteksi — menunggu objek...')
+                logger.debug('[detect] ⏳ Tidak terdeteksi — menunggu objek...')
               }
               stableCountRef.current = 0
               lastConfirmedRef.current = null
             }
           } catch (err) {
-            console.warn('[detect] ⚠️ Classify gagal, skip frame:', err)
+            logger.debug('[detect] ⚠️ Classify gagal, skip frame:', err)
           }
         } else {
-          console.warn('[detect] ⚠️ Frame kosong — kamera belum siap')
+          logger.debug('[detect] ⚠️ Frame kosong — kamera belum siap')
         }
 
         timerRef.current = setTimeout(loop, DETECT_INTERVAL_MS)
@@ -139,13 +140,35 @@ export function useRealtimeDetection() {
   )
 
   const stop = useCallback(() => {
-    console.log('[detect] 🛑 Detection loop dihentikan')
+    logger.debug('[detect] 🛑 Detection loop dihentikan')
     runningRef.current = false
     if (timerRef.current) {
       clearTimeout(timerRef.current)
       timerRef.current = null
     }
     setState((s) => ({ ...s, isDetecting: false }))
+  }, [])
+
+  // Hook ini membersihkan dirinya sendiri saat unmount, sama seperti useCamera.
+  //
+  // Sebelumnya tidak ada sama sekali: `runningRef` tetap true dan setTimeout
+  // yang menunggu tetap menembak, sehingga loop terus memanggil classify() dan
+  // setState() pada komponen yang sudah tidak ada. KioskProvider memang memanggil
+  // stop() di cleanup-nya, tapi menitipkan pembersihan ke pemanggil berarti hook
+  // ini bocor bagi pemakai berikutnya yang lupa melakukannya.
+  //
+  // Tidak memakai `stop` sebagai dependensi: itu akan menautkan pembersihan
+  // unmount pada identitas sebuah callback, dan bila `stop` suatu saat tidak lagi
+  // stabil, efek ini akan ikut berjalan ulang di tengah sesi — menghentikan
+  // deteksi tepat saat anak sedang memindai.
+  useEffect(() => {
+    return () => {
+      runningRef.current = false
+      if (timerRef.current) {
+        clearTimeout(timerRef.current)
+        timerRef.current = null
+      }
+    }
   }, [])
 
   return { state, start, stop }

@@ -19,6 +19,7 @@ import { MockEsp32Client } from '@/api/mock/MockEsp32Client'
 import { mockControls } from '@/api/mock/mockControls'
 import { useCamera } from '@/hooks/useCamera'
 import { useRealtimeDetection } from '@/hooks/useRealtimeDetection'
+import { logger } from '@/lib/logger'
 import { playClick, playError, playSuccess } from '@/lib/sound'
 import { decideAnswer } from '@/machine/answerDecision'
 import { pickQuizItem } from '@/machine/pickQuizItem'
@@ -228,7 +229,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
           retryQueue.shift()
         } catch (err) {
           if (err instanceof CloudRejectedError) {
-            console.warn('[kiosk] log sortiran ditolak server, dibuang:', err.message, next)
+            logger.warn('[kiosk] log sortiran ditolak server, dibuang:', err.message, next)
             retryQueue.shift()
             continue
           }
@@ -283,11 +284,18 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     }
   }, [state.phase, camera, realtimeDetection, sortTrash])
 
-  // Cleanup camera on unmount
+  // Hanya timer scan yang perlu dibersihkan di sini.
+  //
+  // Dulu blok ini juga memanggil camera.stop() dan realtimeDetection.stop()
+  // dengan dependensi kosong — stale closure yang di-flag lint. Menambahkan
+  // `camera`/`realtimeDetection` ke dependensi JUSTRU merusak: objeknya berubah
+  // identitas setiap kali state kamera berubah, sehingga cleanup ikut berjalan
+  // di tengah sesi dan mematikan kamera saat anak sedang memindai.
+  //
+  // Perbaikannya bukan menambal dependensi, melainkan memindahkan tanggung
+  // jawab: kedua hook kini membersihkan dirinya sendiri saat unmount.
   useEffect(() => {
     return () => {
-      camera.stop()
-      realtimeDetection.stop()
       if (scanTimeoutRef.current) clearTimeout(scanTimeoutRef.current)
     }
   }, [])
@@ -299,7 +307,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
         dispatch({ type: 'SET_CLOUD_OFFLINE', offline: false })
       } catch (err) {
         if (err instanceof CloudRejectedError) {
-          console.warn('[kiosk] log sortiran ditolak server:', err.message, payload)
+          logger.warn('[kiosk] log sortiran ditolak server:', err.message, payload)
           return
         }
         retryQueue.push(payload)
@@ -307,7 +315,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
         setQueueLength()
       }
     },
-    [clients, setQueueLength],
+    [clients, retryQueue, setQueueLength],
   )
 
   // Logikanya ada di @/machine/pickQuizItem — fungsi murni yang bisa diuji tanpa
@@ -321,7 +329,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
   const insertTrash = useCallback(() => {
     if (stateRef.current.phase !== 'idle') return
     playClick(stateRef.current.muted)
-    console.log('[kiosk] 📷 Memulai scan — phase → scanning')
+    logger.debug('[kiosk] 📷 Memulai scan — phase → scanning')
     dispatch({ type: 'SCAN_START' })
 
     bestDetectionRef.current = null
@@ -338,7 +346,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
       if (stateRef.current.phase !== 'scanning') return
 
       const best = bestDetectionRef.current
-      console.log('[kiosk] ⏰ Scan timeout — menggunakan best detection:', best)
+      logger.debug('[kiosk] ⏰ Scan timeout — menggunakan best detection:', best)
 
       realtimeDetection.stop()
       camera.stop()
@@ -372,13 +380,13 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     const startDetectionWhenReady = () => {
       if (stateRef.current.phase !== 'scanning') return
       if (cameraReadyRef.current) {
-        console.log('[kiosk] 🎥 Kamera ready — memulai detection loop')
+        logger.debug('[kiosk] 🎥 Kamera ready — memulai detection loop')
         realtimeDetection.start(
           camera.captureFrame,
           async (imageBase64: string) => {
-            console.log(`[kiosk] 🔍 Mengirim frame ke classify (${imageBase64.length} bytes)`)
+            logger.debug(`[kiosk] 🔍 Mengirim frame ke classify (${imageBase64.length} bytes)`)
             const result = await clients.cloud.classify(imageBase64)
-            console.log('[kiosk] 📦 Hasil classify:', {
+            logger.debug('[kiosk] 📦 Hasil classify:', {
               category: result.category,
               label: result.label,
               confidence: result.confidence,
@@ -388,14 +396,14 @@ export function KioskProvider({ children }: { children: ReactNode }) {
             // Track best detection for timeout fallback
             if (result.category && result.confidence > (bestDetectionRef.current?.confidence ?? 0)) {
               bestDetectionRef.current = result
-              console.log('[kiosk] 🏆 Best detection diperbarui:', result.label, `${(result.confidence * 100).toFixed(0)}%`)
+              logger.debug('[kiosk] 🏆 Best detection diperbarui:', result.label, `${(result.confidence * 100).toFixed(0)}%`)
             }
 
             dispatch({ type: 'SET_CLOUD_OFFLINE', offline: false })
             return result
           },
           (confirmed: CvDetection) => {
-            console.log('[kiosk] ✅ Deteksi terkonfirmasi:', {
+            logger.debug('[kiosk] ✅ Deteksi terkonfirmasi:', {
               category: confirmed.category,
               label: confirmed.label,
               confidence: confirmed.confidence,
@@ -413,9 +421,9 @@ export function KioskProvider({ children }: { children: ReactNode }) {
             // RESET di sini akan membuang sampah yang sudah masuk tanpa disortir.
             const item = pickItem(confirmed)
             if (!item) {
-              console.warn('[kiosk] ⚠️ Bank kuis kosong untuk kategori', confirmed.category)
+              logger.warn('[kiosk] ⚠️ Bank kuis kosong untuk kategori', confirmed.category)
             } else {
-              console.log('[kiosk] 🎯 Quiz item dipilih:', item.item_name, `(${item.category})`)
+              logger.debug('[kiosk] 🎯 Quiz item dipilih:', item.item_name, `(${item.category})`)
             }
             dispatch({ type: 'SCAN_DONE', detection: confirmed, item })
           },

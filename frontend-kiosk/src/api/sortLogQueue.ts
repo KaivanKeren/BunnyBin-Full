@@ -15,6 +15,7 @@
 // mendarat di waktu kejadiannya — mekanisme itu sudah ada dan sudah diuji di
 // backend (KioskIngestTest). Yang hilang hanya ketahanannya terhadap reload.
 import type { SortLogPayload } from '@/api/contracts'
+import { logger } from '@/lib/logger'
 
 const STORAGE_KEY = 'binexa.kiosk.sortLogQueue'
 
@@ -96,7 +97,7 @@ export class SortLogQueue {
     // berhenti mencatat sama sekali.
     while (this.items.length > MAX_QUEUE) {
       const dibuang = this.items.shift()
-      console.warn('[kiosk] antrean penuh, log sortir tertua dibuang:', dibuang)
+      logger.warn('[kiosk] antrean penuh, log sortir tertua dibuang:', dibuang)
     }
 
     this.persist()
@@ -126,7 +127,7 @@ export class SortLogQueue {
 
       const sah = parsed.filter(looksLikePayload)
       if (sah.length !== parsed.length) {
-        console.warn(
+        logger.warn(
           `[kiosk] ${parsed.length - sah.length} entri antrean tidak sah, dilewati`,
         )
       }
@@ -134,7 +135,7 @@ export class SortLogQueue {
       return sah.slice(-MAX_QUEUE)
     } catch {
       // Storage rusak tidak boleh mematikan kiosk. Mulai kosong.
-      console.warn('[kiosk] antrean tersimpan tidak terbaca, mulai dari kosong')
+      logger.warn('[kiosk] antrean tersimpan tidak terbaca, mulai dari kosong')
 
       return []
     }
@@ -149,7 +150,7 @@ export class SortLogQueue {
       // Kuota penuh / storage diblokir. Sesi ini tetap berjalan dengan antrean
       // di memori — hanya tidak bertahan setelah reload. Diam di sini disengaja:
       // melempar akan menjatuhkan alur sortir yang sedang berjalan.
-      console.warn('[kiosk] gagal menyimpan antrean ke localStorage')
+      logger.warn('[kiosk] gagal menyimpan antrean ke localStorage')
     }
   }
 }
