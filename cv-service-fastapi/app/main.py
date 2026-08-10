@@ -97,6 +97,33 @@ def decode_and_validate(image_base64: str, settings: Settings) -> Image.Image:
 
     try:
         image = Image.open(BytesIO(raw))
+    except Image.DecompressionBombError:
+        # Pillow punya penjaganya sendiri (~178 juta piksel) dan MELEMPAR saat
+        # open. Tanpa ditangkap di sini, decompression bomb yang cukup besar
+        # justru menghasilkan HTTP 500 — kegagalan server untuk payload yang
+        # sebenarnya sudah berhasil ditolak dengan benar.
+        raise HTTPException(status_code=422, detail="Dimensi gambar tidak wajar")
+    except (UnidentifiedImageError, OSError):
+        raise HTTPException(status_code=422, detail="Payload bukan gambar valid")
+
+    # Batas BYTE di atas tidak melindungi dari decompression bomb: PNG 5 MB bisa
+    # mekar jadi puluhan gigabyte piksel saat di-decode. Pemeriksaan ini terjadi
+    # SEBELUM load(), memakai header gambar — jadi bom ditolak tanpa pernah
+    # dialokasikan memorinya.
+    #
+    # Pillow punya MAX_IMAGE_PIXELS bawaan (~178 juta), tapi ambangnya jauh di
+    # atas apa pun yang layanan ini butuhkan: kiosk hanya mengirim frame 640 px.
+    width, height = image.size
+    if width * height > settings.cv_max_pixels:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Dimensi gambar {width}x{height} melebihi batas "
+                f"{settings.cv_max_pixels} piksel"
+            ),
+        )
+
+    try:
         image.load()
     except (UnidentifiedImageError, OSError):
         raise HTTPException(status_code=422, detail="Payload bukan gambar valid")

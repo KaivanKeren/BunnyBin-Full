@@ -1,8 +1,13 @@
 node_modules
 dist
+*.tsbuildinfo
+/runs/
 *.local
 .DS_Store
-docs/
+
+# .env produksi di root (dipakai docker-compose.prod.yml). Templatnya
+# .env.production.example yang ter-commit.
+/.env
 
 # Rahasia Docker — JANGAN commit API key. Pakai .env.roboflow.example sbagai templat.
 docker/.env.roboflow

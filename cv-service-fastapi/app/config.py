@@ -153,6 +153,10 @@ class Settings(BaseSettings):
     cv_mode: Literal["dummy", "real", "roboflow"] = "dummy"
     cv_confidence_threshold: float = 0.6
     cv_max_image_mb: int = 5
+    # Batas DIMENSI, pelengkap cv_max_image_mb yang hanya membatasi byte
+    # terkompresi. 40 juta piksel ≈ 6000x6667 — jauh di atas frame kiosk (640 px)
+    # tapi cukup rendah untuk menolak decompression bomb sebelum dialokasikan.
+    cv_max_pixels: int = 40_000_000
     cv_model_path: str = "/model/best.pt"
     # Shared secret yang harus dikirim Laravel di header X-Internal-Token.
     # WAJIB diisi — layanan menolak start bila kosong (lihat app/main.py).

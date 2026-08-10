@@ -21,6 +21,7 @@ Binexa menghubungkan tiga dunia: perangkat IoT di lapangan (ESP32 + kamera + sen
 11. [Penyimpanan & Retensi Data](#11-penyimpanan--retensi-data)
 12. [Variabel Environment](#12-variabel-environment)
 13. [Testing](#13-testing)
+14. [Dokumentasi Lanjutan](#14-dokumentasi-lanjutan)
 
 ---
 
@@ -357,6 +358,10 @@ Base URL: `/api` — Auth: **Laravel Sanctum**.
 | GET | `/alerts` | List alert (scoped) | all |
 | PATCH | `/alerts/{id}/read` | Tandai alert dibaca | all |
 | POST | `/cv/classify` | Proxy klasifikasi ke CV service | token unit (kiosk) |
+| POST | `/devices/activate` | Tukar kode aktivasi sekali pakai → token unit | public (throttle 10/menit) |
+| POST | `/units/{code}/fill` | Relay pembacaan sensor ESP32 | token unit (kiosk) |
+| POST | `/units/{code}/sort-logs` | Catat satu sortiran anak | token unit (kiosk) |
+| POST | `/units/{code}/heartbeat` | Tanda kiosk hidup tanpa aktivitas | token unit (kiosk) |
 
 **RBAC:** middleware `role:super_admin` membatasi operasi write, dan query otomatis di-scope ke `school_id` admin login kecuali `super_admin`.
 
@@ -491,5 +496,29 @@ pytest
 
 **Uji ingestion tanpa hardware:** gunakan `php artisan simulate:devices` (lihat [§7](#7-menjalankan-tanpa-hardware-mode-simulasi)) atau `mosquitto_pub` CLI untuk mem-publish pesan MQTT manual.
 
+
+---
+
+## 14. Dokumentasi Lanjutan
+
+| Dokumen | Isi |
+|---|---|
+| [`docs/PRD-Webapp-FullStack.md`](docs/PRD-Webapp-FullStack.md) | PRD induk — kontrak API, model data, alur lintas komponen |
+| [`docs/PRD-Backend-Laravel.md`](docs/PRD-Backend-Laravel.md) | Endpoint, RBAC, ingestion MQTT, alert engine |
+| [`docs/PRD-Database.md`](docs/PRD-Database.md) | Skema, hypertable, continuous aggregate, retensi |
+| [`docs/PRD-CV-Service-FastAPI.md`](docs/PRD-CV-Service-FastAPI.md) | Kontrak `/classify`, mode dummy/real/roboflow |
+| [`docs/PRD-Frontend.md`](docs/PRD-Frontend.md) | Kiosk: state machine, layar, kontrak client |
+| [`docs/PRD-Frontend-Admin.md`](docs/PRD-Frontend-Admin.md) | Dashboard admin: halaman, guard, query |
+| [`docs/PRD-Infrastructure-Deployment.md`](docs/PRD-Infrastructure-Deployment.md) | Topologi container, jaringan, deployment |
+
+Kode merujuk dokumen-dokumen ini lewat nomor pasal (mis. *"PRD-Backend §5.1"* di `MqttListen`),
+jadi keduanya dibaca berpasangan.
+
+**Catatan status:**
+
+- [`ANALISIS-MASALAH.md`](ANALISIS-MASALAH.md) — audit menyeluruh, 39 temuan berperingkat
+- [`TODO-PERBAIKAN.md`](TODO-PERBAIKAN.md) — rencana perbaikan bertahap beserta status terkini
+
+---
 
 <sub>Dibuat untuk mendukung program pemilahan & edukasi sampah di sekolah. 🐰🗑️</sub>

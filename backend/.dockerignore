@@ -1,0 +1,11 @@
+vendor
+node_modules
+.env
+.env.backup
+.env.production
+storage/logs/*
+storage/framework/cache/data/*
+storage/framework/sessions/*
+storage/framework/views/*
+tests
+.phpunit.result.cache

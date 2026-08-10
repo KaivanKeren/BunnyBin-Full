@@ -136,3 +136,41 @@ async def test_service_refuses_to_start_without_a_token(monkeypatch):
     with pytest.raises(RuntimeError, match="CV_INTERNAL_TOKEN"):
         async with lifespan(app):
             pass
+
+
+async def test_oversize_dimensions_are_rejected_before_decoding(client, monkeypatch):
+    # Batas BYTE tidak melihat decompression bomb: PNG kecil bisa mendeklarasikan
+    # dimensi raksasa yang baru mekar saat di-decode. Ambangnya diturunkan lewat
+    # env supaya test tetap murah — yang diuji logikanya, bukan daya tahan RAM.
+    monkeypatch.setenv("CV_MAX_PIXELS", "1000")
+    get_settings.cache_clear()
+
+    resp = await client.post("/classify", json={"image_base64": image_b64(30)})  # 64x64 = 4096 px
+
+    assert resp.status_code == 422
+    assert "melebihi" in resp.json()["detail"]
+
+
+async def test_pillow_own_bomb_guard_becomes_422_not_500(client, monkeypatch):
+    # Pillow melempar DecompressionBombError saat open untuk gambar yang sangat
+    # besar. Tanpa ditangkap, bom yang berhasil ditolak justru muncul sebagai
+    # HTTP 500 — kegagalan server untuk sesuatu yang penanganannya sudah benar.
+    def boom(*args, **kwargs):
+        raise Image.DecompressionBombError("terlalu besar")
+
+    monkeypatch.setattr(Image, "open", boom)
+
+    resp = await client.post("/classify", json={"image_base64": image_b64(30)})
+
+    assert resp.status_code == 422
+
+
+async def test_normal_kiosk_frame_still_passes(client):
+    # Frame kiosk sesungguhnya 640 px — batas dimensi tidak boleh menyentuhnya.
+    buf = BytesIO()
+    Image.new("RGB", (640, 480), (30, 30, 30)).save(buf, format="JPEG")
+    payload = base64.b64encode(buf.getvalue()).decode()
+
+    resp = await client.post("/classify", json={"image_base64": payload})
+
+    assert resp.status_code == 200

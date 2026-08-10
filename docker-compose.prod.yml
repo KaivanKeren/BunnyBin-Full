@@ -1,0 +1,188 @@
+# Compose PRODUKSI Binexa.
+#
+# Berbeda dari docker/docker-compose.yml yang hanya menyediakan dependensi untuk
+# pengembangan di host. Di sini SELURUH sistem berjalan sebagai container, dan
+# tiga prinsip dipegang:
+#
+#   1. Tidak ada port internal yang di-publish. Hanya nginx (80) yang terbuka.
+#      Database, broker, CV service, dan PHP-FPM hanya terjangkau lewat jaringan
+#      internal compose.
+#   2. Rahasia datang dari .env, tidak pernah dari berkas ini.
+#   3. Empat proses Laravel terpisah. `php artisan queue:work`, `mqtt:listen`,
+#      dan `schedule:work` adalah proses yang berumur panjang; menjalankannya
+#      di container web berarti mereka mati diam-diam saat web di-restart.
+
+name: binexa
+
+# Rotasi log untuk SEMUA service. Default driver json-file Docker tidak punya
+# batas: mqtt-listener dan queue menulis terus-menerus, dan disk yang penuh
+# menjatuhkan seluruh host — kegagalan produksi yang paling mudah dicegah.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: '10m'
+    max-file: '5'
+
+services:
+  postgres:
+    logging: *logging
+    image: timescale/timescaledb:latest-pg15
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:?wajib di-set}
+      POSTGRES_USER: ${DB_USERNAME:?wajib di-set}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?wajib di-set}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${DB_USERNAME} -d ${DB_DATABASE}']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  mosquitto:
+    logging: *logging
+    image: eclipse-mosquitto:2
+    restart: unless-stopped
+    volumes:
+      - ./docker/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      # passwd & acl WAJIB ada. Broker menolak start tanpanya — disengaja:
+      # lebih baik gagal terang-terangan daripada diam-diam kembali anonim.
+      - ./docker/mosquitto/passwd:/mosquitto/config/passwd:ro
+      - ./docker/mosquitto/acl:/mosquitto/config/acl:ro
+      - mosquitto-data:/mosquitto/data
+    # Cek port, bukan subscribe ber-autentikasi: healthcheck yang butuh
+    # kredensial menambah satu lagi hal yang bisa salah konfigurasi, dan
+    # kegagalannya terbaca sebagai "broker mati" padahal brokernya sehat.
+    healthcheck:
+      test: ['CMD-SHELL', 'timeout 3 sh -c "</dev/tcp/localhost/1883" || exit 1']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  cv-service:
+    logging: *logging
+    build:
+      context: ./cv-service-fastapi
+      args:
+        INSTALL_REAL: 'true'
+    restart: unless-stopped
+    # INTERNAL-ONLY: `expose`, bukan `ports`. Layanan inferensi tidak boleh
+    # terjangkau dari luar host — dan sejak task 1.7 ia juga menolak start
+    # tanpa CV_INTERNAL_TOKEN, jadi ada dua lapis, bukan satu.
+    expose:
+      - '8000'
+    environment:
+      CV_MODE: ${CV_MODE:-real}
+      CV_MODEL_PATH: ${CV_MODEL_PATH:-/model/best.pt}
+      CV_INTERNAL_TOKEN: ${CV_INTERNAL_TOKEN:?wajib di-set}
+      ROBOFLOW_MODEL_ID: ${ROBOFLOW_MODEL_ID:-}
+      ROBOFLOW_API_KEY: ${ROBOFLOW_API_KEY:-}
+    volumes:
+      - ./cv-service-fastapi/models:/model:ro
+
+  backend: &backend
+    logging: *logging
+    build:
+      context: ./backend
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      APP_ENV: production
+      APP_DEBUG: 'false'
+      DB_HOST: postgres
+      MQTT_HOST: mosquitto
+      CV_SERVICE_URL: http://cv-service:8000
+    depends_on:
+      postgres: {condition: service_healthy}
+      mosquitto: {condition: service_started}
+    volumes:
+      - storage:/var/www/html/storage
+
+  # Migration + cache config/route/view, dijalankan SEKALI lalu berhenti.
+  # Cache sengaja dibuat di sini, bukan saat build image: nilainya harus berasal
+  # dari environment RUNTIME (APP_KEY, kredensial DB, CV_INTERNAL_TOKEN), yang
+  # belum ada saat image dibangun.
+  backend-init:
+    <<: *backend
+    restart: 'no'
+    command: >-
+      sh -c "php artisan migrate --force &&
+             php artisan config:cache &&
+             php artisan route:cache &&
+             php artisan event:cache"
+
+  # --max-time=3600: proses berhenti sendiri tiap jam lalu di-restart Docker.
+  # Ini bukan tambalan atas kebocoran memori, melainkan cara memastikan worker
+  # memuat ulang kode dan konfigurasi setelah deploy tanpa perlu diingat.
+  queue:
+    <<: *backend
+    command: php artisan queue:work --tries=3 --max-time=3600
+    depends_on:
+      postgres: {condition: service_healthy}
+      backend-init: {condition: service_completed_successfully}
+
+  # Subscriber MQTT. Loop reconnect-nya ada di dalam perintah itu sendiri
+  # (MqttListen), jadi restart container hanya jaring pengaman terakhir.
+  # PEMANTAUAN: proses ini gagal secara SENYAP — tidak ada request yang error,
+  # data hanya berhenti masuk. Kanari fungsionalnya sudah ada dan tidak perlu
+  # dibangun: scheduler menandai unit `offline` setelah 15 menit tanpa data dan
+  # memunculkan alert di dashboard. Jadi ingest yang mati muncul sebagai
+  # "semua unit offline" dalam 15 menit, bukan sebagai keheningan.
+  mqtt-listener:
+    <<: *backend
+    command: php artisan mqtt:listen
+    depends_on:
+      mosquitto: {condition: service_started}
+      backend-init: {condition: service_completed_successfully}
+
+  # Scheduler: sweepOffline tiap 5 menit. Tanpa proses ini, unit yang mati
+  # tidak pernah ditandai offline dan tidak ada alert yang muncul.
+  scheduler:
+    <<: *backend
+    command: php artisan schedule:work
+    depends_on:
+      backend-init: {condition: service_completed_successfully}
+
+  admin:
+    logging: *logging
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: ${ADMIN_API_URL:-/api}
+    restart: unless-stopped
+    expose: ['80']
+
+  kiosk:
+    logging: *logging
+    build:
+      context: ./frontend-kiosk
+      args:
+        VITE_API_URL: ${KIOSK_API_URL:-/api}
+    restart: unless-stopped
+    expose: ['80']
+
+  # Satu-satunya pintu masuk dari luar. Meneruskan /api ke PHP-FPM dan sisanya
+  # ke bundle statis sesuai host.
+  nginx:
+    logging: *logging
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - '${HTTP_PORT:-80}:80'
+    volumes:
+      - ./docker/nginx/prod.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./docker/nginx/php.inc:/etc/nginx/conf.d/php.inc:ro
+      - storage:/var/www/html/storage:ro
+    environment:
+      ADMIN_HOST: ${ADMIN_HOST:-_}
+      KIOSK_HOST: ${KIOSK_HOST:-kiosk.localhost}
+      # Batasi envsubst HANYA ke dua variabel ini; tanpa filter, $host/$uri/
+      # $remote_addr milik nginx ikut dikosongkan dan proxy-nya rusak.
+      NGINX_ENVSUBST_FILTER: '^(ADMIN|KIOSK)_HOST$$'
+    depends_on: [backend, admin, kiosk]
+
+volumes:
+  pgdata:
+  mosquitto-data:
+  storage:

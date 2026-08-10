@@ -1,0 +1,154 @@
+name: CI
+
+# Empat komponen, empat bahasa, satu gerbang.
+#
+# Sebelum berkas ini ada, seluruh test proyek memang hijau — tapi tidak ada yang
+# menjalankannya. Regresi hanya tertangkap bila seseorang ingat menjalankan tiga
+# perintah berbeda di tiga direktori berbeda.
+
+on:
+  push:
+    branches: [main, 'dev/**']
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (SQLite)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_sqlite, pdo_pgsql, simplexml
+          coverage: none
+
+      - name: Cache Composer
+        uses: actions/cache@v4
+        with:
+          path: ~/.composer/cache
+          key: composer-${{ hashFiles('backend/composer.lock') }}
+
+      - run: composer install --no-interaction --prefer-dist --no-progress
+        working-directory: backend
+
+      - run: php artisan test
+        working-directory: backend
+
+  backend-postgres:
+    # Suite di atas berjalan di SQLite, sehingga SELURUH jalur produksi database
+    # tidak pernah dieksekusi: manipulasi hypertable di migration, time_bucket(),
+    # continuous aggregate, dan perilaku timestampTz. Dua service di bawah yang
+    # membuat jalur itu benar-benar teruji.
+    name: Backend (${{ matrix.label }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Membuktikan migration tetap sukses TANPA extension TimescaleDB —
+          # syarat yang sudah dijaga guard di tiap migration hypertable.
+          - label: PostgreSQL polos
+            image: postgres:15-alpine
+          - label: TimescaleDB
+            image: timescale/timescaledb:latest-pg15
+    services:
+      postgres:
+        image: ${{ matrix.image }}
+        env:
+          POSTGRES_DB: binexa_test
+          POSTGRES_USER: binexa
+          POSTGRES_PASSWORD: binexa
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U binexa"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_pgsql, simplexml
+          coverage: none
+
+      - name: Cache Composer
+        uses: actions/cache@v4
+        with:
+          path: ~/.composer/cache
+          key: composer-${{ hashFiles('backend/composer.lock') }}
+
+      - run: composer install --no-interaction --prefer-dist --no-progress
+        working-directory: backend
+
+      # Variabel environment MENIMPA <env> di phpunit.xml (atribut force
+      # default false = jangan timpa yang sudah ada), jadi suite yang sama
+      # berjalan di driver berbeda tanpa berkas konfigurasi kedua.
+      - run: php artisan test
+        working-directory: backend
+        env:
+          DB_CONNECTION: pgsql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 5432
+          DB_DATABASE: binexa_test
+          DB_USERNAME: binexa
+          DB_PASSWORD: binexa
+
+  cv-service:
+    name: CV Service
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: cv-service-fastapi/requirements*.txt
+
+      - run: pip install -r requirements.txt -r requirements-dev.txt
+        working-directory: cv-service-fastapi
+
+      - run: python -m pytest -q
+        working-directory: cv-service-fastapi
+
+  frontend:
+    name: ${{ matrix.dir }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: [frontend, frontend-kiosk]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: ${{ matrix.dir }}/package-lock.json
+
+      - run: npm ci
+        working-directory: ${{ matrix.dir }}
+
+      # oxlint keluar dengan kode 1 hanya pada rule bertingkat "error".
+      # Aturan hook di frontend-kiosk sengaja di-set error justru supaya
+      # langkah ini bisa menggagalkan build — sebagai warning ia lolos diam-diam.
+      - run: npm run lint
+        working-directory: ${{ matrix.dir }}
+
+      # --if-present: frontend admin belum punya test (task 5.3 menyusul).
+      - run: npm test --if-present
+        working-directory: ${{ matrix.dir }}
+
+      # `npm run build` menjalankan `tsc -b` lebih dulu, jadi ini sekaligus typecheck.
+      - run: npm run build
+        working-directory: ${{ matrix.dir }}

@@ -31,7 +31,11 @@ class UnitController extends Controller
 
     public function store(StoreUnitRequest $request): UnitResource
     {
-        return new UnitResource(Unit::create($request->validated())->load('school'));
+        $unit = Unit::create($request->validated());
+
+        DashboardController::forgetCacheFor($unit->school_id);
+
+        return new UnitResource($unit->load('school'));
     }
 
     public function show(Request $request, string $unit): UnitResource
@@ -48,14 +52,25 @@ class UnitController extends Controller
 
     public function update(UpdateUnitRequest $request, Unit $unit): UnitResource
     {
+        // Sekolah lama DAN baru dibatalkan: memindahkan unit antar sekolah
+        // mengubah ringkasan keduanya.
+        $sekolahLama = $unit->school_id;
+
         $unit->update($request->validated());
+
+        DashboardController::forgetCacheFor($sekolahLama);
+        DashboardController::forgetCacheFor($unit->school_id);
 
         return new UnitResource($unit->load('school'));
     }
 
     public function destroy(Unit $unit): Response
     {
+        $schoolId = $unit->school_id;
+
         $unit->delete();
+
+        DashboardController::forgetCacheFor($schoolId);
 
         return response()->noContent();
     }
