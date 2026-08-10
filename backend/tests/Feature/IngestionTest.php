@@ -53,13 +53,41 @@ it('deduplicates alerts of the same type within one hour', function () {
     expect(Alert::where('alert_type', Alert::TYPE_FILL_70)->count())->toBe(1);
 });
 
-it('creates a new alert after the previous one is read', function () {
+it('does not create a duplicate alert just because the previous one was read', function () {
+    // Perilaku LAMA: klausa `is_read = false` ikut dalam pengecekan dedup,
+    // sehingga menandai alert terbaca langsung membuka pintu alert baru pada
+    // pembacaan sensor berikutnya. Akibatnya terbalik dari yang diinginkan —
+    // makin rajin admin membersihkan inbox, makin banyak alert yang muncul untuk
+    // tong yang sama, sampai 48 alert sehari bila sensor lapor tiap 30 menit.
+    //
+    // Status baca menandai apakah seseorang sudah MELIHAT pesannya, bukan
+    // apakah kondisinya sudah berubah.
     dispatchReading('sensor', ['organic_pct' => 75, 'inorganic_pct' => 30]);
     Alert::query()->update(['is_read' => true]);
 
     dispatchReading('sensor', ['organic_pct' => 80, 'inorganic_pct' => 30]);
 
+    expect(Alert::where('alert_type', Alert::TYPE_FILL_70)->count())->toBe(1);
+});
+
+it('lets the same condition alert again once the one-hour window passes', function () {
+    // Dedup adalah throttle, bukan penekan permanen: tong yang masih penuh
+    // harus tetap bersuara secara berkala, terbaca atau tidak.
+    dispatchReading('sensor', ['organic_pct' => 75, 'inorganic_pct' => 30]);
+
+    $this->travel(61)->minutes();
+    dispatchReading('sensor', ['organic_pct' => 80, 'inorganic_pct' => 30]);
+
     expect(Alert::where('alert_type', Alert::TYPE_FILL_70)->count())->toBe(2);
+});
+
+it('throttles unread alerts too, not only read ones', function () {
+    // Sisi yang SUDAH benar sebelumnya dan tidak boleh ikut rusak.
+    dispatchReading('sensor', ['organic_pct' => 75, 'inorganic_pct' => 30]);
+    dispatchReading('sensor', ['organic_pct' => 78, 'inorganic_pct' => 30]);
+
+    expect(Alert::where('alert_type', Alert::TYPE_FILL_70)->count())->toBe(1)
+        ->and(Alert::where('is_read', false)->count())->toBe(1);
 });
 
 it('converts raw ultrasonic distance to fill percent using unit geometry', function () {

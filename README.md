@@ -18,9 +18,9 @@ Binexa menghubungkan tiga dunia: perangkat IoT di lapangan (ESP32 + kamera + sen
 8. [Akun Login & Data Seed](#8-akun-login--data-seed)
 9. [Referensi API](#9-referensi-api)
 10. [Ingestion MQTT](#10-ingestion-mqtt)
-11. [Variabel Environment](#11-variabel-environment)
-12. [Testing](#12-testing)
-13. [Dokumentasi Lanjutan](#13-dokumentasi-lanjutan)
+11. [Penyimpanan & Retensi Data](#11-penyimpanan--retensi-data)
+12. [Variabel Environment](#12-variabel-environment)
+13. [Testing](#13-testing)
 
 ---
 
@@ -388,7 +388,36 @@ Base URL: `/api` — Auth: **Laravel Sanctum**.
 
 ---
 
-## 11. Variabel Environment
+## 11. Penyimpanan & Retensi Data
+
+Dua tabel time-series adalah hypertable TimescaleDB, dan **kebijakan retensinya sengaja berbeda**:
+
+| Tabel | Retensi | Alasan |
+|---|---|---|
+| `fill_snapshots` | **90 hari** | Pembacaan sensor tiap 30 menit; nilainya habis begitu diringkas. Rata-rata per jam disimpan permanen di continuous aggregate `fill_hourly`. |
+| `sort_logs` | **selamanya** | Satu baris = satu interaksi anak. Rekaman jangka panjang inilah produknya — sekolah ingin melihat akurasi pemilahan naik dari tahun ke tahun. |
+
+**Biaya `sort_logs`** (terukur, bukan perkiraan — 204 byte/baris termasuk index, diukur pada
+20.000 baris di TimescaleDB 2.28):
+
+- Satu unit ≈ 10–40 ribu baris per tahun ajaran → **2–8 MB/tahun**
+- Seratus unit → **200–800 MB/tahun**
+
+Tinjau ulang bila melewati ~10 GB (sekitar 12 tahun pada 100 unit). Jalan keluarnya saat itu adalah
+continuous aggregate **harian** + retensi pada tabel mentah — dengan syarat agregat itu sekaligus
+dibaca `DashboardController` dan `SortLogController`.
+
+**Continuous aggregate `fill_hourly`** menyimpan rata-rata per jam dan tidak punya retensi sendiri,
+jadi grafik rentang panjang tetap terisi meski data mentahnya sudah dihapus. Ia dikonfigurasi
+dengan `materialized_only = false` (real-time aggregation) supaya rentang satu jam terakhir —
+bagian yang ditonton saat kiosk sedang dipakai — tidak hilang menunggu jadwal refresh.
+
+> Endpoint `fill-history` memilih sumbernya otomatis: `fill_hourly` bila TimescaleDB tersedia,
+> agregasi on-the-fly dari tabel mentah bila tidak (Postgres polos / SQLite di test).
+
+---
+
+## 12. Variabel Environment
 
 ### Backend (`backend/.env`)
 
@@ -436,7 +465,7 @@ satu device menulis atas nama device lain.
 
 ---
 
-## 12. Testing
+## 13. Testing
 
 **Backend (Pest / PHPUnit):**
 
