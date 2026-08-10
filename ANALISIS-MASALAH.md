@@ -534,9 +534,9 @@ Dampaknya terbatas pada jaringan lokal, karenanya P2 dan bukan P0 — tapi jarin
 Http::timeout(10)->retry(2, 500, throw: false)->post(...)
 ```
 
-`retry()` milik Laravel mengulang setiap response gagal, termasuk 4xx. Gambar tidak valid yang dijawab 422 oleh CV service akan dikirim tiga kali dengan jeda 500 ms sebelum menyerah — padahal kode di bawahnya sudah tahu 4xx itu permanen dan meneruskannya ke pemanggil (baris 29-31).
+`retry()` milik Laravel mengulang setiap response gagal, termasuk 4xx. Gambar tidak valid yang dijawab 422 oleh CV service akan dikirim **dua** kali dengan jeda 500 ms sebelum menyerah (`retry(2)` = jumlah percobaan total, bukan pengulangan tambahan — diverifikasi saat perbaikan) — padahal kode di bawahnya sudah tahu 4xx itu permanen dan meneruskannya ke pemanggil (baris 29-31).
 
-Dengan kiosk yang mengirim frame tiap 200 ms selama scanning, satu kondisi kamera yang buruk melipattigakan beban ke CV service tepat saat ia sedang paling sibuk.
+Dengan kiosk yang mengirim frame tiap 200 ms selama scanning, satu kondisi kamera yang buruk melipatgandakan beban ke CV service tepat saat ia sedang paling sibuk.
 
 **Perbaikan:**
 ```php

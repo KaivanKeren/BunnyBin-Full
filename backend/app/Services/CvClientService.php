@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Exceptions\CvServiceUnavailableException;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
 
 class CvClientService
@@ -12,7 +13,7 @@ class CvClientService
     {
         try {
             $response = Http::timeout(10)
-                ->retry(2, 500, throw: false)
+                ->retry(2, 500, when: $this->worthRetrying(...), throw: false)
                 // CV service menolak /classify tanpa header ini (401). Nilainya
                 // harus sama dengan CV_INTERNAL_TOKEN di sisi FastAPI.
                 ->withHeaders(['X-Internal-Token' => config('services.cv.internal_token')])
@@ -44,6 +45,36 @@ class CvClientService
         }
 
         return CvResult::fromArray($response->json());
+    }
+
+    /**
+     * Hanya kegagalan yang MUNGKIN berubah hasilnya bila diulang.
+     *
+     * Sebelumnya `retry()` dipanggil tanpa predikat, dan default-nya mengulang
+     * SEMUA respons gagal — termasuk 4xx. Gambar yang tidak valid dikirim DUA
+     * kali dengan jeda 500 ms sebelum menyerah, padahal kode di bawahnya sudah
+     * tahu 4xx itu permanen dan meneruskannya ke pemanggil. (`retry(2)` di
+     * Laravel berarti jumlah percobaan TOTAL, bukan pengulangan setelah
+     * percobaan pertama — diverifikasi lewat Http::assertSentCount.)
+     *
+     * Biayanya nyata: kiosk mengirim frame tiap 200 ms selama memindai, jadi
+     * satu kondisi kamera yang buruk MELIPATGANDAKAN beban ke CV service tepat
+     * saat ia sedang paling sibuk — dan menahan tiap frame ekstra 500 ms,
+     * yang justru memperlambat loop deteksi yang sedang bermasalah.
+     *
+     * 401/403 juga tidak diulang: itu shared secret yang salah, kondisi
+     * konfigurasi yang tidak akan sembuh dalam 500 ms.
+     */
+    private function worthRetrying(\Throwable $exception): bool
+    {
+        // Tidak tersambung / timeout — belum ada jawaban sama sekali.
+        if ($exception instanceof ConnectionException) {
+            return true;
+        }
+
+        // Ada jawaban: hanya 5xx yang layak diulang.
+        return $exception instanceof RequestException
+            && $exception->response->serverError();
     }
 
     /**
