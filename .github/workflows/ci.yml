@@ -16,6 +16,13 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # Disamakan dengan PHP yang dipakai pengembangan. composer.json memasang
+  # platform override `ext-simplexml: 8.4.17` (host dev tidak punya ekstensinya),
+  # dan menjalankan CI di versi lain menambah variabel yang tidak pernah diuji
+  # siapa pun. Rentang yang didukung tetap ^8.2 sesuai composer.json.
+  PHP_VERSION: '8.4'
+
 jobs:
   backend:
     name: Backend (SQLite)
@@ -25,18 +32,37 @@ jobs:
 
       - uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.3'
+          php-version: ${{ env.PHP_VERSION }}
           extensions: pdo_sqlite, pdo_pgsql, simplexml
           coverage: none
 
+      # Composer 2 di Linux menyimpan cache di ~/.cache/composer, BUKAN
+      # ~/.composer/cache. Path yang keliru tidak menggagalkan build — ia hanya
+      # membuat cache tidak pernah kena, dan setiap job mengunduh ulang semuanya.
       - name: Cache Composer
         uses: actions/cache@v4
         with:
-          path: ~/.composer/cache
+          path: ~/.cache/composer
           key: composer-${{ hashFiles('backend/composer.lock') }}
+          restore-keys: composer-
 
       - run: composer install --no-interaction --prefer-dist --no-progress
         working-directory: backend
+
+      # .env WAJIB, dan ketiadaannya adalah kegagalan CI yang paling mudah
+      # terlewat: `backend/.env` gitignored, jadi runner tidak pernah punya
+      # satu pun. Gejalanya bukan satu error yang jelas melainkan 147 warning
+      # phpdotenv plus 4 test gagal — SANCTUM_STATEFUL_DOMAINS kosong membuat
+      # statefulApi() tidak memasang sesi, sehingga login membalas
+      # "Session store not set on request".
+      #
+      # phpunit.xml tetap menimpa DB/CACHE/QUEUE, jadi berkas ini hanya
+      # memasok APP_KEY dan konfigurasi non-test.
+      - name: Siapkan .env
+        working-directory: backend
+        run: |
+          cp .env.example .env
+          php artisan key:generate
 
       - run: php artisan test
         working-directory: backend
@@ -67,7 +93,7 @@ jobs:
           POSTGRES_PASSWORD: binexa
         ports: ['5432:5432']
         options: >-
-          --health-cmd "pg_isready -U binexa"
+          --health-cmd "pg_isready -U binexa -d binexa_test"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 10
@@ -76,18 +102,25 @@ jobs:
 
       - uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.3'
+          php-version: ${{ env.PHP_VERSION }}
           extensions: pdo_pgsql, simplexml
           coverage: none
 
       - name: Cache Composer
         uses: actions/cache@v4
         with:
-          path: ~/.composer/cache
+          path: ~/.cache/composer
           key: composer-${{ hashFiles('backend/composer.lock') }}
+          restore-keys: composer-
 
       - run: composer install --no-interaction --prefer-dist --no-progress
         working-directory: backend
+
+      - name: Siapkan .env
+        working-directory: backend
+        run: |
+          cp .env.example .env
+          php artisan key:generate
 
       # Variabel environment MENIMPA <env> di phpunit.xml (atribut force
       # default false = jangan timpa yang sudah ada), jadi suite yang sama
@@ -145,10 +178,70 @@ jobs:
       - run: npm run lint
         working-directory: ${{ matrix.dir }}
 
-      # --if-present: frontend admin belum punya test (task 5.3 menyusul).
+      # --if-present: frontend admin belum punya script test, dan langkah ini
+      # dilewati (exit 0) alih-alih gagal.
       - run: npm test --if-present
         working-directory: ${{ matrix.dir }}
 
       # `npm run build` menjalankan `tsc -b` lebih dulu, jadi ini sekaligus typecheck.
       - run: npm run build
         working-directory: ${{ matrix.dir }}
+
+  docker:
+    # Dua error yang HANYA muncul saat image dibangun, dan keduanya lolos dari
+    # seluruh test:
+    #
+    #   1. composer.lock menuntut `php >= 8.4.1` (Symfony 8.x), sementara
+    #      composer.json menyatakan `^8.2`. Base image 8.3 gagal jauh setelah
+    #      `composer install`, di vendor/composer/platform_check.php.
+    #   2. `COPY . .` menyalin working tree, bukan isi git — `bootstrap/cache/`
+    #      dari mesin dev membawa daftar provider hasil install WITH dev-deps,
+    #      lalu image --no-dev gagal: Class "Laravel\Pail\PailServiceProvider"
+    #      not found.
+    #
+    # Keduanya ditemukan dengan membangun manual. Job ini yang membuat
+    # penemuan berikutnya tidak perlu manual lagi.
+    name: Docker build (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: backend
+            context: ./backend
+          - name: admin
+            context: ./frontend
+          - name: kiosk
+            context: ./frontend-kiosk
+          - name: cv-service
+            context: ./cv-service-fastapi
+            # INSTALL_REAL sengaja DIBIARKAN false di CI: torch + ultralytics
+            # berukuran giga dan menghabiskan menit-menit runner tanpa menguji
+            # apa pun selain kecepatan unduh. Struktur Dockerfile-nya sama.
+            build-args: INSTALL_REAL=false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          push: false
+          load: true
+          tags: binexa-${{ matrix.name }}:ci
+          build-args: ${{ matrix.build-args }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Build yang sukses belum berarti image-nya jalan: kegagalan provider
+      # discovery dan ekstensi PHP yang hilang baru terlihat saat dieksekusi.
+      - name: Pastikan image backend benar-benar berjalan
+        if: matrix.name == 'backend'
+        run: |
+          docker run --rm -e APP_KEY=base64:$(openssl rand -base64 32) \
+            binexa-backend:ci php artisan --version
+          docker run --rm binexa-backend:ci php -m | grep -qx pdo_pgsql
+          docker run --rm binexa-backend:ci php -m | grep -qx sockets
+          docker run --rm binexa-backend:ci php -m | grep -qx pcntl
+

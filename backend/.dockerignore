@@ -1,11 +1,34 @@
+# Apa pun yang REGENERATED atau spesifik-mesin tidak boleh masuk image.
+#
+# Aturannya: `COPY . .` menyalin WORKING TREE, bukan isi git. Jadi berkas yang
+# di-gitignore tetap ikut kecuali disebut di sini — dan hasil build jadi
+# bergantung pada kondisi mesin yang membangunnya.
+
 vendor
 node_modules
+
+# Rahasia. Konfigurasi produksi datang dari environment container.
 .env
-.env.backup
-.env.production
+.env.*
+!.env.example
+
+# Cache paket Laravel — DIBANGKITKAN oleh `php artisan package:discover`.
+# Menyalinnya dari mesin dev membawa daftar provider hasil `composer install`
+# YANG MENYERTAKAN dev-dependency, lalu image `--no-dev` gagal saat build:
+#   Class "Laravel\Pail\PailServiceProvider" not found
+bootstrap/cache/*.php
+
+# Berkas runtime; strukturnya dibuat ulang dari .gitignore di tiap direktori.
 storage/logs/*
 storage/framework/cache/data/*
 storage/framework/sessions/*
 storage/framework/views/*
+storage/*.key
+
+# Tidak ada gunanya di image produksi.
 tests
 .phpunit.result.cache
+.phpunit.cache
+phpunit.xml
+Dockerfile
+.dockerignore

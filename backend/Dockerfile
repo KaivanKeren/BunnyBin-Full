@@ -5,6 +5,8 @@
 # terpisah per peran hanya menggandakan permukaan yang harus di-patch tanpa
 # memberi isolasi apa pun — semuanya butuh basis kode yang sama.
 
+# Image composer:2 membawa PHP-nya sendiri; ia harus >= 8.4.1 agar
+# `composer install` lolos platform check dari lock (lihat catatan di bawah).
 FROM composer:2 AS vendor
 
 WORKDIR /app
@@ -21,7 +23,17 @@ RUN composer install \
     --optimize-autoloader
 
 
-FROM php:8.3-fpm-alpine
+# PHP 8.4, BUKAN 8.3 — dan ini bukan preferensi.
+#
+# composer.json menyatakan `"php": "^8.2"`, tapi composer.lock TIDAK bisa
+# dijalankan di 8.2/8.3: lock di-resolve di PHP 8.4 sehingga menarik komponen
+# Symfony 8.x yang menuntut `php >= 8.4.1` (symfony/string, /translation,
+# /event-dispatcher, /yaml, /clock, /css-selector).
+#
+# Memakai 8.3 tidak gagal saat `composer install` — ia gagal beberapa langkah
+# kemudian dengan pesan yang membingungkan dari vendor/composer/platform_check.php:
+#   "Your Composer dependencies require a PHP version >= 8.4.1. You are running 8.3.33."
+FROM php:8.4-fpm-alpine
 
 # pdo_pgsql — database. sockets — dibutuhkan php-mqtt/client.
 # pcntl — dibutuhkan queue:work agar bisa berhenti dengan rapi saat container
