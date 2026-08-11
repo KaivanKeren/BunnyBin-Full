@@ -38,7 +38,53 @@ def build_classifier(settings: Settings) -> Classifier:
             api_key=settings.roboflow_api_key,
         )
 
+    if settings.cv_mode == "vlm":
+        from app.inference.vlm import AnthropicVlm
+
+        if not settings.anthropic_api_key:
+            raise RuntimeError("CV_MODE=vlm membutuhkan ANTHROPIC_API_KEY")
+
+        return AnthropicVlm(
+            api_key=settings.anthropic_api_key,
+            model=settings.vlm_model,
+            timeout=settings.vlm_timeout_s,
+            fallback=build_local_fallback(settings),
+        )
+
+    if settings.cv_mode == "gemini":
+        from app.inference.gemini import GeminiVlm
+
+        if not settings.gemini_api_key:
+            raise RuntimeError("CV_MODE=gemini membutuhkan GEMINI_API_KEY")
+
+        return GeminiVlm(
+            api_key=settings.gemini_api_key,
+            model=settings.gemini_model,
+            timeout=settings.vlm_timeout_s,
+            fallback=build_local_fallback(settings),
+        )
+
     return DummyClassifier()
+
+
+def build_local_fallback(settings: Settings) -> Classifier | None:
+    """Bobot lokal yang dipakai saat API cloud tak terjangkau.
+
+    Kegagalan memuatnya BUKAN alasan menolak start: mode cloud tetap berguna tanpa
+    cadangan, dan menggagalkan seluruh layanan karena torch tidak terpasang akan
+    mengubah penurunan kualitas menjadi pemadaman total.
+    """
+    try:
+        from app.inference.yolo import YoloClassifier
+
+        return YoloClassifier(settings.cv_model_path)
+    except Exception as e:  # noqa: BLE001
+        log.warning(
+            "Cadangan lokal tidak tersedia (%s) — mode cloud jalan TANPA jaring "
+            "pengaman; bila internet putus, objek dianggap tak terdeteksi",
+            e,
+        )
+        return None
 
 
 def require_internal_token(x_internal_token: str | None = Header(default=None)) -> None:

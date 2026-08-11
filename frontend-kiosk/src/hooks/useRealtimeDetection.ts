@@ -15,9 +15,22 @@ export interface RealtimeDetectionState {
   fps: number
 }
 
-const DETECT_INTERVAL_MS = 200
+// Jeda dan jumlah konfirmasi disetel untuk CV_MODE=vlm, di mana setiap frame
+// adalah satu panggilan API berbayar dengan latensi jaringan — bukan inferensi
+// lokal 35 ms yang praktis gratis.
+//
+// Pada 200 ms, loop mengirim lima frame per detik dan menumpuk di belakang
+// latensi yang tak pernah bisa dikejarnya; pada konfirmasi 2 frame, setiap
+// sortiran membayar dua kali untuk jawaban yang sama. 2000 ms + konfirmasi
+// tunggal membuat satu sortiran normal selesai dalam satu panggilan.
+//
+// Mesin di KioskProvider tidak berubah dan tetap menanggung sisanya: bila frame
+// pertama tak meyakinkan, loop mencoba lagi tiap 2 detik sampai SCAN_TIMEOUT_MS
+// (10 dtk), lalu memakai deteksi terbaik yang sempat terkumpul — atau jatuh ke
+// mode manual agar anak yang memutuskan, bukan sampahnya dibuang tak tersortir.
+const DETECT_INTERVAL_MS = 2000
 const STABLE_THRESHOLD = 0.4
-const STABLE_CONFIRM_COUNT = 2
+const STABLE_CONFIRM_COUNT = 1
 const MAX_HISTORY = 10
 
 export function useRealtimeDetection() {

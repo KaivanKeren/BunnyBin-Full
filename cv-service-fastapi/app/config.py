@@ -150,7 +150,7 @@ def resolve_category(label: str | None) -> str | None:
 
 
 class Settings(BaseSettings):
-    cv_mode: Literal["dummy", "real", "roboflow"] = "dummy"
+    cv_mode: Literal["dummy", "real", "roboflow", "vlm", "gemini"] = "dummy"
     cv_confidence_threshold: float = 0.6
     cv_max_image_mb: int = 5
     # Batas DIMENSI, pelengkap cv_max_image_mb yang hanya membatasi byte
@@ -167,6 +167,24 @@ class Settings(BaseSettings):
     roboflow_api_url: str = "https://detect.roboflow.com"
     roboflow_model_id: str = ""
     roboflow_api_key: str = ""
+    # VLM cloud (CV_MODE=vlm) — klasifikasi lewat model bahasa-visual.
+    #
+    # cv_model_path tetap dipakai di mode ini: bobot lokal jadi CADANGAN yang
+    # dipanggil otomatis saat API tak terjangkau, sehingga kiosk tidak pernah
+    # melihat kegagalan jaringan. Lihat app/inference/vlm.py.
+    #
+    # Timeout sengaja lebih kecil daripada timeout Laravel (30 dtk): lapisan
+    # terdalam harus menyerah lebih dulu, supaya yang terjadi adalah jatuh ke
+    # model lokal — bukan Laravel memutus sambungan saat cadangan belum sempat
+    # dicoba.
+    anthropic_api_key: str = ""
+    vlm_model: str = "claude-haiku-4-5"
+    vlm_timeout_s: float = 12.0
+    # Gemini (CV_MODE=gemini) — jalur yang sama, penyedia berbeda. Nama modelnya
+    # ambil dari daftar di aistudio.google.com; Google cukup sering menggantinya,
+    # jadi nilai default di sini bisa saja sudah usang saat kamu memakainya.
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.5-flash"
 
 
 @lru_cache

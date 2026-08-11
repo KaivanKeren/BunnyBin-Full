@@ -29,11 +29,19 @@ class AppServiceProvider extends ServiceProvider
         // (koleksi paginated tetap punya data/links/meta).
         JsonResource::withoutWrapping();
 
-        // P2-2: Rate limit untuk endpoint CV classify — 10 req/detik per kiosk token.
-        // Cukup longgar untuk scanning normal (~200ms/frame = 5 fps), tapi mencegah
-        // flood dari bug frontend (infinite loop, dll).
+        // P2-2: Rate limit untuk endpoint CV classify — 1 req/detik per kiosk token.
+        //
+        // Dulu 600/menit karena kiosk memindai 5 fps dengan inferensi lokal yang
+        // praktis gratis. Sejak CV_MODE=vlm, tiap panggilan adalah permintaan
+        // berbayar ke model cloud dan jeda kiosk naik ke 2 detik, jadi peran
+        // limiter ini berubah: dari penjaga CPU menjadi PENJAGA TAGIHAN. Bug loop
+        // di frontend sekarang berbiaya uang, bukan sekadar beban prosesor.
+        //
+        // 60/menit tetap ~30x di atas pemakaian normal (1 sortiran = 1-5 panggilan),
+        // dan tetap di bawah baseline 1200/menit milik token unit di
+        // configureApiRateLimiter() — syarat agar limiter inilah yang mengikat.
         RateLimiter::for('cv-classify', function ($request) {
-            return Limit::perMinute(600, $request->user()?->id ?? $request->ip())
+            return Limit::perMinute(60, $request->user()?->id ?? $request->ip())
                 ->by($request->user()?->id ?? $request->ip());
         });
 
@@ -49,19 +57,21 @@ class AppServiceProvider extends ServiceProvider
      *
      * ATURAN URUTAN yang gampang terlanggar: batas di sini harus lebih LONGGAR
      * daripada limiter per-rute mana pun, karena keduanya berlaku bersamaan dan
-     * yang paling ketat yang menang. Kiosk memanggil /cv/classify 5 kali per
-     * detik saat memindai (throttle:cv-classify = 600/menit); menyamakan
-     * baseline ini dengan angka admin akan mematikan loop deteksi real-time DAN
-     * membuat limiter cv-classify jadi konfigurasi mati yang tak pernah
-     * tercapai. Karena itu batasnya dibedakan per jenis pemanggil.
+     * yang paling ketat yang menang. Kiosk memanggil /cv/classify saat memindai
+     * (throttle:cv-classify = 60/menit); menyamakan baseline ini dengan angka
+     * admin akan mematikan pemindaian DAN membuat limiter cv-classify jadi
+     * konfigurasi mati yang tak pernah tercapai. Karena itu batasnya dibedakan
+     * per jenis pemanggil.
      */
     private function configureApiRateLimiter(): void
     {
         RateLimiter::for('api', function (Request $request) {
             $caller = $request->user();
 
-            // Token unit kiosk: harus di atas 600/menit milik cv-classify
-            // supaya limiter spesifik itu yang mengikat, bukan baseline ini.
+            // Token unit kiosk: harus di atas 60/menit milik cv-classify supaya
+            // limiter spesifik itu yang mengikat, bukan baseline ini. Angkanya
+            // sengaja dibiarkan 1200: kiosk juga mengirim fill, sort-logs, dan
+            // heartbeat lewat baseline yang sama.
             if ($caller instanceof Unit) {
                 return Limit::perMinute(1200)->by('unit:'.$caller->id);
             }
