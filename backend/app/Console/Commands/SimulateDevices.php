@@ -140,11 +140,20 @@ class SimulateDevices extends Command
     }
 
     /**
+     * Memakai koneksi 'simulator', BUKAN 'default'.
+     *
+     * Sejak broker berautentikasi, akun backend ('default') hanya punya izin
+     * BACA — backend produksi memang tidak boleh bisa memalsukan pembacaan
+     * device. Simulator berpura-pura menjadi semua unit sekaligus, jadi ia
+     * memakai akun terpisah yang boleh menulis ke seluruh binexa/# dan hanya
+     * ada di broker dev. Lihat config/mqtt-client.php + docker/mosquitto/acl.
+     *
      * @param  array<string, mixed>  $payload
      */
     private function publish(Unit $unit, string $channel, array $payload): void
     {
-        MQTT::publish("binexa/{$unit->code}/{$channel}", json_encode($payload));
+        MQTT::connection('simulator')
+            ->publish("binexa/{$unit->code}/{$channel}", json_encode($payload));
     }
 
     /**

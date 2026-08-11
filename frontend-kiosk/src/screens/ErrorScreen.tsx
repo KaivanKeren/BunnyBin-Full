@@ -9,7 +9,14 @@ import { itemEmoji } from '@/lib/itemEmoji'
 export default function ErrorScreen() {
   const { state, retryQuestion } = useKiosk()
   const item = state.item
-  const isOrganic = item?.category === 'organic'
+
+  // Kebenaran yang diajarkan di layar ini berasal dari DETEKSI kamera, bukan
+  // dari kategori quiz item. Keduanya kini selalu sama (pickItem hanya memilih
+  // dari kategori terdeteksi), tapi item bisa null saat bank kuis tidak punya
+  // entri untuk kategori itu — dan `item?.category === 'organic'` pada null akan
+  // diam-diam menghasilkan false, sehingga anak diberi tahu "Ini Sampah
+  // Anorganik!" untuk benda organik.
+  const isOrganic = (state.detection?.category ?? item?.category) === 'organic'
 
   const title = isOrganic ? 'Ini Sampah Organik!' : 'Ini Sampah Anorganik!'
   const emoji = isOrganic ? '🍃' : '♻️'

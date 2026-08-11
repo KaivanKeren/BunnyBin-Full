@@ -39,6 +39,31 @@ return new class extends Migration
 
         // Retention raw 90 hari (aggregate tetap tersimpan)
         DB::statement("SELECT add_retention_policy('fill_snapshots', INTERVAL '90 days')");
+
+        // `sort_logs` SENGAJA TIDAK diberi retensi, dan itu bukan kelalaian.
+        //
+        // Keduanya hypertable, jadi perlakuan yang berbeda ini pantas dijelaskan
+        // di tempat perbandingannya terlihat:
+        //
+        //   fill_snapshots — pembacaan sensor tiap 30 menit, nilainya habis
+        //     begitu diringkas. Yang berguna jangka panjang adalah rata-rata per
+        //     jam, dan itu sudah disimpan `fill_hourly`. Baris mentahnya boleh
+        //     dibuang.
+        //
+        //   sort_logs — satu baris = satu interaksi anak dengan kiosk. Justru
+        //     rekaman jangka panjang inilah produknya: sekolah ingin melihat
+        //     akurasi pemilahan naik dari tahun ke tahun. Menghapusnya
+        //     menghancurkan cerita yang jadi alasan sistem ini dibangun.
+        //
+        // Biayanya terukur, bukan diterka: 204 byte/baris (termasuk index, diukur
+        // pada 20.000 baris di TimescaleDB 2.28). Satu unit ≈ 10–40 ribu baris
+        // per tahun ajaran → 2–8 MB/tahun. Pada 100 unit ≈ 200–800 MB/tahun.
+        //
+        // Tinjau ulang bila melewati ~10 GB (sekitar 12 tahun pada 100 unit):
+        // saat itu jalannya adalah continuous aggregate HARIAN + retensi pada
+        // tabel mentah — TAPI agregat itu harus sekaligus dibaca
+        // DashboardController dan SortLogController. Agregat yang tidak dibaca
+        // siapa pun persis kesalahan yang sempat terjadi pada `fill_hourly`.
     }
 
     public function down(): void

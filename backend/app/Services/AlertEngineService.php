@@ -9,8 +9,8 @@ class AlertEngineService
 {
     /**
      * Threshold per kompartemen: >=90 → fill_90, >=70 → fill_70.
-     * Dedup: skip jika sudah ada alert sejenis yang belum dibaca dalam 1 jam
-     * terakhir (hindari spam saat sensor lapor tiap 30 menit).
+     * Dedup: skip jika sudah ada alert sejenis dalam 1 jam terakhir, DIBACA
+     * ATAU TIDAK (hindari spam saat sensor lapor tiap 30 menit).
      */
     public function evaluateFill(Unit $unit, int $organicPct, int $inorganicPct): void
     {
@@ -24,7 +24,7 @@ class AlertEngineService
      */
     public function reportSensorFault(Unit $unit, string $label, float $distanceCm): void
     {
-        if ($this->hasRecentUnread($unit, Alert::TYPE_SENSOR_FAULT)) {
+        if ($this->hasRecentAlert($unit, Alert::TYPE_SENSOR_FAULT)) {
             return;
         }
 
@@ -73,7 +73,7 @@ class AlertEngineService
             default => null,
         };
 
-        if ($type === null || $this->hasRecentUnread($unit, $type)) {
+        if ($type === null || $this->hasRecentAlert($unit, $type)) {
             return;
         }
 
@@ -81,11 +81,24 @@ class AlertEngineService
             "Kompartemen {$label} unit {$unit->code} terisi {$pct}%.");
     }
 
-    private function hasRecentUnread(Unit $unit, string $type): bool
+    /**
+     * Throttle berbasis WAKTU saja — status baca sengaja tidak ikut dinilai.
+     *
+     * Sebelumnya klausa `is_read = false` ikut di sini, dan itu justru
+     * membatalkan maksud throttle-nya: begitu admin menandai alert terbaca —
+     * tindakan normal, bahkan tindakan yang diinginkan — pembacaan sensor
+     * berikutnya langsung membuat alert baru untuk tong yang sama. Tong penuh
+     * yang menunggu dikosongkan menghasilkan alert baru SETIAP KALI admin
+     * membersihkan inbox-nya, sehingga membersihkan inbox terasa memancing spam.
+     *
+     * Status baca adalah urusan UI: ia menandai apakah seseorang sudah MELIHAT
+     * pesannya, bukan apakah kondisinya sudah berubah. Jendela satu jam yang
+     * memutuskan seberapa sering satu kondisi boleh berbicara.
+     */
+    private function hasRecentAlert(Unit $unit, string $type): bool
     {
         return Alert::where('unit_id', $unit->id)
             ->where('alert_type', $type)
-            ->where('is_read', false)
             ->where('created_at', '>', now()->subHour())
             ->exists();
     }

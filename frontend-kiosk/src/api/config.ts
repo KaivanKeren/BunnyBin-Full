@@ -12,11 +12,16 @@ export const config = {
   // berubah; cek Serial Monitor saat boot lalu set VITE_ESP32_BASE_URL.
   esp32BaseUrl: import.meta.env.VITE_ESP32_BASE_URL ?? 'bunnybin.local',
   debugPanel: import.meta.env.VITE_DEBUG_PANEL === 'true',
-  // Sanctum token per-unit ability 'kiosk' (§6) — di-generate backend `php artisan unit:token {code}`.
-  kioskToken: import.meta.env.VITE_KIOSK_API_TOKEN ?? '',
-  // unit_code device ini — harus SAMA dengan unit yang dipakai token kiosk,
-  // dan dengan unit yang tampil di dashboard admin. Prototype: satu unit BNX-001.
-  unitCode: import.meta.env.VITE_UNIT_CODE ?? 'BNX-001',
+  // CATATAN: token kiosk dan unit_code SENGAJA TIDAK ADA DI SINI lagi.
+  //
+  // Keduanya dulu dibaca dari VITE_KIOSK_API_TOKEN / VITE_UNIT_CODE. Semua
+  // variabel VITE_* di-inline saat build, jadi tokennya selalu berakhir sebagai
+  // teks polos di dalam bundle .js yang dilayankan ke browser — terbaca siapa
+  // pun yang membuka DevTools di tablet kiosk.
+  //
+  // Sekarang keduanya lahir saat aktivasi (POST /devices/activate) dan hidup di
+  // localStorage perangkat: lihat @/api/credentials. Menambahkannya kembali ke
+  // sini akan mengembalikan kebocoran yang sama.
   // Jeda relay pembacaan ESP32 → cloud. Polling layar jauh lebih cepat (2 dtk),
   // tapi menulis snapshot secepat itu hanya membanjiri tabel time-series.
   fillRelayMs: Number(import.meta.env.VITE_FILL_RELAY_MS ?? 30_000),

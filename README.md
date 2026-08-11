@@ -18,9 +18,10 @@ Binexa menghubungkan tiga dunia: perangkat IoT di lapangan (ESP32 + kamera + sen
 8. [Akun Login & Data Seed](#8-akun-login--data-seed)
 9. [Referensi API](#9-referensi-api)
 10. [Ingestion MQTT](#10-ingestion-mqtt)
-11. [Variabel Environment](#11-variabel-environment)
-12. [Testing](#12-testing)
-13. [Dokumentasi Lanjutan](#13-dokumentasi-lanjutan)
+11. [Penyimpanan & Retensi Data](#11-penyimpanan--retensi-data)
+12. [Variabel Environment](#12-variabel-environment)
+13. [Testing](#13-testing)
+14. [Dokumentasi Lanjutan](#14-dokumentasi-lanjutan)
 
 ---
 
@@ -285,13 +286,23 @@ php artisan simulate:devices --once       # satu tick lalu berhenti (untuk uji)
 
 Simulator mem-publish `sensor`, `sort`, dan `heartbeat` untuk tiap unit berstatus `active`. Buka Admin Dashboard untuk melihat fill level naik, sort log bertambah, dan alert muncul saat threshold tercapai.
 
-**Token kiosk untuk mode real** (kiosk memakai Sanctum token per-unit dengan ability `kiosk`):
+**Mengaktifkan kiosk untuk mode real.** Kiosk mengambil tokennya sendiri lewat kode
+aktivasi sekali pakai — token TIDAK lagi ditaruh di `.env`:
 
 ```bash
-php artisan unit:token BNX-001
-# Salin token ke frontend-kiosk/.env → VITE_KIOSK_API_TOKEN=...
-# dan setel VITE_UNIT_CODE=BNX-001, VITE_USE_MOCK=false
+# 1. Admin menerbitkan kode (berlaku 24 jam, sekali pakai)
+php artisan unit:activation-code BNX-001
+
+# 2. Setel frontend-kiosk/.env → VITE_USE_MOCK=false, lalu buka kiosk
+# 3. Masukkan kodenya di layar aktivasi
 ```
+
+Token dan `unit_code` tersimpan di `localStorage` perangkat itu saja. Ini disengaja: semua
+variabel `VITE_*` di-inline ke dalam bundle JavaScript saat build, jadi token yang lewat
+`.env` akan terbaca siapa pun yang membuka DevTools di tablet kiosk.
+
+Mengaktifkan ulang perangkat otomatis mencabut token lamanya, sehingga tablet yang hilang
+tidak tetap bisa menulis data. Token berlaku 180 hari (`SANCTUM_TOKEN_EXPIRATION`).
 
 ---
 
@@ -301,17 +312,27 @@ php artisan unit:token BNX-001
 
 | Peran | Email | Password | Akses |
 |---|---|---|---|
-| Super Admin | `admin@binexa.id` | `password` | Semua sekolah, semua unit, kelola kuis & sekolah |
-| School Admin | (email admin sekolah tiap seed) | `password` | Hanya sekolah miliknya |
+| Super Admin | `admin@binexa.id` | `SEED_ADMIN_PASSWORD` | Semua sekolah, semua unit, kelola kuis & sekolah |
+| School Admin | `admin@sdn1kudus.sch.id` | `SEED_ADMIN_PASSWORD` | Hanya sekolah miliknya |
 
-> Password default berasal dari `SEED_ADMIN_PASSWORD` (default `password`). **Ganti di produksi.**
+> ⚠️ **`SEED_ADMIN_PASSWORD` wajib diisi di `.env`** — tidak ada nilai default, dan `db:seed`
+> akan gagal bila kosong. Email super admin sudah pasti, jadi password yang bisa ditebak
+> berarti akun itu bisa diambil alih dalam satu percobaan.
 
-**Sekolah & unit contoh:**
+**Sekolah & unit yang dibuat:**
 
-- **SDN 1 Kudus** — `BNX-001` (Kelas 3A, active), `BNX-002` (Kantin, active), `BNX-003` (Perpustakaan, maintenance)
-- **SDN 2 Demak** — `BNX-004` (Lapangan, active), `BNX-005` (UKS, offline)
+- **SDN 1 Kudus** — satu unit `BNX-001` (Kantin), status `offline`, `last_seen_at` null
 
-Seed juga mengisi bank kuis, sebagian riwayat sortir, maintenance event, dan alert contoh.
+Seeder hanya mengisi **data master**: sekolah, dua akun admin, bank kuis (10 item), dan
+pendaftaran unit. Tidak ada satu pun fill snapshot, sort log, alert, atau maintenance event —
+semuanya harus lahir dari pembacaan ESP32 sungguhan lewat pipeline ingest, supaya setiap angka
+di dashboard bisa dipercaya sebagai hasil pengukuran, bukan karangan seeder.
+
+Setelah seed, terbitkan kode aktivasi kiosk untuk unit tersebut:
+
+```bash
+php artisan unit:activation-code BNX-001
+```
 
 ---
 
@@ -337,6 +358,10 @@ Base URL: `/api` — Auth: **Laravel Sanctum**.
 | GET | `/alerts` | List alert (scoped) | all |
 | PATCH | `/alerts/{id}/read` | Tandai alert dibaca | all |
 | POST | `/cv/classify` | Proxy klasifikasi ke CV service | token unit (kiosk) |
+| POST | `/devices/activate` | Tukar kode aktivasi sekali pakai → token unit | public (throttle 10/menit) |
+| POST | `/units/{code}/fill` | Relay pembacaan sensor ESP32 | token unit (kiosk) |
+| POST | `/units/{code}/sort-logs` | Catat satu sortiran anak | token unit (kiosk) |
+| POST | `/units/{code}/heartbeat` | Tanda kiosk hidup tanpa aktivitas | token unit (kiosk) |
 
 **RBAC:** middleware `role:super_admin` membatasi operasi write, dan query otomatis di-scope ke `school_id` admin login kecuali `super_admin`.
 
@@ -368,7 +393,36 @@ Base URL: `/api` — Auth: **Laravel Sanctum**.
 
 ---
 
-## 11. Variabel Environment
+## 11. Penyimpanan & Retensi Data
+
+Dua tabel time-series adalah hypertable TimescaleDB, dan **kebijakan retensinya sengaja berbeda**:
+
+| Tabel | Retensi | Alasan |
+|---|---|---|
+| `fill_snapshots` | **90 hari** | Pembacaan sensor tiap 30 menit; nilainya habis begitu diringkas. Rata-rata per jam disimpan permanen di continuous aggregate `fill_hourly`. |
+| `sort_logs` | **selamanya** | Satu baris = satu interaksi anak. Rekaman jangka panjang inilah produknya — sekolah ingin melihat akurasi pemilahan naik dari tahun ke tahun. |
+
+**Biaya `sort_logs`** (terukur, bukan perkiraan — 204 byte/baris termasuk index, diukur pada
+20.000 baris di TimescaleDB 2.28):
+
+- Satu unit ≈ 10–40 ribu baris per tahun ajaran → **2–8 MB/tahun**
+- Seratus unit → **200–800 MB/tahun**
+
+Tinjau ulang bila melewati ~10 GB (sekitar 12 tahun pada 100 unit). Jalan keluarnya saat itu adalah
+continuous aggregate **harian** + retensi pada tabel mentah — dengan syarat agregat itu sekaligus
+dibaca `DashboardController` dan `SortLogController`.
+
+**Continuous aggregate `fill_hourly`** menyimpan rata-rata per jam dan tidak punya retensi sendiri,
+jadi grafik rentang panjang tetap terisi meski data mentahnya sudah dihapus. Ia dikonfigurasi
+dengan `materialized_only = false` (real-time aggregation) supaya rentang satu jam terakhir —
+bagian yang ditonton saat kiosk sedang dipakai — tidak hilang menunggu jadwal refresh.
+
+> Endpoint `fill-history` memilih sumbernya otomatis: `fill_hourly` bila TimescaleDB tersedia,
+> agregasi on-the-fly dari tabel mentah bila tidak (Postgres polos / SQLite di test).
+
+---
+
+## 12. Variabel Environment
 
 ### Backend (`backend/.env`)
 
@@ -394,14 +448,29 @@ Base URL: `/api` — Auth: **Laravel Sanctum**.
 |---|---|
 | `VITE_USE_MOCK` | `true` = jalan tanpa backend; `false` = real mode |
 | `VITE_API_URL` | endpoint API Laravel |
-| `VITE_KIOSK_API_TOKEN` | Sanctum token per-unit (`php artisan unit:token`) |
-| `VITE_UNIT_CODE` | kode unit device ini (mis. `BNX-001`) |
 | `VITE_ESP32_BASE_URL` | endpoint ESP32 lokal |
+| `VITE_FILL_RELAY_MS` | jeda relay pembacaan ESP32 → cloud (ms) |
 | `VITE_DEBUG_PANEL` | panel debug — **jangan `true` di produksi** |
+
+> Tidak ada variabel token/`unit_code` di sini, dan jangan ditambahkan: variabel `VITE_*`
+> di-inline ke bundle publik. Kredensial kiosk lahir saat aktivasi — lihat [§7](#7-menjalankan-tanpa-hardware-mode-simulasi).
+
+### Broker MQTT (`backend/.env`)
+
+| Variabel | Keterangan |
+|---|---|
+| `MQTT_AUTH_USERNAME` / `MQTT_AUTH_PASSWORD` | akun subscriber `mqtt:listen` (akses **baca** `binexa/#`) |
+| `MQTT_SIMULATOR_USERNAME` / `MQTT_SIMULATOR_PASSWORD` | akun `simulate:devices` — **dev saja**, jangan ada di produksi |
+| `CV_INTERNAL_TOKEN` | shared secret ke CV service; harus sama di kedua sisi |
+| `SANCTUM_TOKEN_EXPIRATION` | masa berlaku token dalam menit (default 259200 = 180 hari) |
+
+Broker tidak lagi anonim. Kredensial dibuat dari `docker/mosquitto/passwd.example`, dan
+`docker/mosquitto/acl` mengunci tiap unit ke prefix topiknya sendiri — itu yang mencegah
+satu device menulis atas nama device lain.
 
 ---
 
-## 12. Testing
+## 13. Testing
 
 **Backend (Pest / PHPUnit):**
 
@@ -427,5 +496,29 @@ pytest
 
 **Uji ingestion tanpa hardware:** gunakan `php artisan simulate:devices` (lihat [§7](#7-menjalankan-tanpa-hardware-mode-simulasi)) atau `mosquitto_pub` CLI untuk mem-publish pesan MQTT manual.
 
+
+---
+
+## 14. Dokumentasi Lanjutan
+
+| Dokumen | Isi |
+|---|---|
+| [`docs/PRD-Webapp-FullStack.md`](docs/PRD-Webapp-FullStack.md) | PRD induk — kontrak API, model data, alur lintas komponen |
+| [`docs/PRD-Backend-Laravel.md`](docs/PRD-Backend-Laravel.md) | Endpoint, RBAC, ingestion MQTT, alert engine |
+| [`docs/PRD-Database.md`](docs/PRD-Database.md) | Skema, hypertable, continuous aggregate, retensi |
+| [`docs/PRD-CV-Service-FastAPI.md`](docs/PRD-CV-Service-FastAPI.md) | Kontrak `/classify`, mode dummy/real/roboflow |
+| [`docs/PRD-Frontend.md`](docs/PRD-Frontend.md) | Kiosk: state machine, layar, kontrak client |
+| [`docs/PRD-Frontend-Admin.md`](docs/PRD-Frontend-Admin.md) | Dashboard admin: halaman, guard, query |
+| [`docs/PRD-Infrastructure-Deployment.md`](docs/PRD-Infrastructure-Deployment.md) | Topologi container, jaringan, deployment |
+
+Kode merujuk dokumen-dokumen ini lewat nomor pasal (mis. *"PRD-Backend §5.1"* di `MqttListen`),
+jadi keduanya dibaca berpasangan.
+
+**Catatan status:**
+
+- [`ANALISIS-MASALAH.md`](ANALISIS-MASALAH.md) — audit menyeluruh, 39 temuan berperingkat
+- [`TODO-PERBAIKAN.md`](TODO-PERBAIKAN.md) — rencana perbaikan bertahap beserta status terkini
+
+---
 
 <sub>Dibuat untuk mendukung program pemilahan & edukasi sampah di sekolah. 🐰🗑️</sub>

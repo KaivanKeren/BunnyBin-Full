@@ -1,0 +1,33 @@
+# ACL Binexa — INI yang menutup lubang identitas, bukan password_file.
+#
+# Backend memercayai nama topik sebagai identitas device: MqttListen memecah
+# `binexa/{unit_code}/{channel}` dan ProcessSensorReading mencari unit dari
+# potongan tengahnya. Tidak ada langkah yang memverifikasi bahwa pengirimnya
+# benar-benar unit itu. Karena verifikasinya tidak ada di aplikasi, broker yang
+# harus melakukannya: tiap kredensial device dikunci ke prefix topiknya sendiri,
+# sehingga `bnx-001` secara fisik tidak bisa menulis atas nama `BNX-002`.
+#
+# Berkas ini BUKAN rahasia (hanya kebijakan, tanpa kredensial) — sengaja
+# di-commit supaya aturannya bisa ditinjau lewat review, bukan hanya ada di
+# server. Yang dirahasiakan adalah `passwd`.
+#
+# Menambah unit baru = tambahkan satu blok user di sini + satu entri di passwd
+# (`mosquitto_passwd -b passwd bnx-002 <password>`), lalu restart broker.
+
+# --- Subscriber backend (php artisan mqtt:listen) ---
+# Hanya BACA. Backend tidak pernah mem-publish ke topik device; memberinya akses
+# tulis berarti bug di sisi server bisa memalsukan pembacaan sensor.
+user binexa-backend
+topic read binexa/#
+
+# --- Device: BNX-001 ---
+# Hanya TULIS, dan hanya di bawah prefix unitnya sendiri.
+user bnx-001
+topic write binexa/BNX-001/#
+
+# --- Simulator (php artisan simulate:devices) — DEV SAJA ---
+# Simulator berpura-pura menjadi SEMUA unit aktif sekaligus, jadi ia butuh tulis
+# ke seluruh namespace. Itu persis kewenangan yang baru saja kita cabut dari
+# penyerang, jadi kredensial ini TIDAK BOLEH ADA di passwd produksi.
+user binexa-simulator
+topic write binexa/#

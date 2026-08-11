@@ -16,6 +16,10 @@ return [
 
     'cv' => [
         'url' => env('CV_SERVICE_URL', 'http://cv-service:8000'),
+        // Shared secret ke CV service. Nilainya HARUS sama dengan
+        // CV_INTERNAL_TOKEN di cv-service-fastapi — layanan itu menolak start
+        // bila kosong, dan menolak /classify bila headernya tidak cocok.
+        'internal_token' => env('CV_INTERNAL_TOKEN', ''),
     ],
 
     'postmark' => [

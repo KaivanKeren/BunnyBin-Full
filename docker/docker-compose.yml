@@ -41,17 +41,47 @@ services:
       CV_MODE: ${CV_MODE:-roboflow}
       CV_MODEL_PATH: ${CV_MODEL_PATH:-/model/best.pt}
       ROBOFLOW_MODEL_ID: ${ROBOFLOW_MODEL_ID:-deteksi-sampah-organik-anorganik/3}
+      # Set di docker/.env (gitignored), pakai nilai yang SAMA dengan
+      # CV_INTERNAL_TOKEN di backend/.env.
+      #
+      # Sengaja TIDAK memakai sintaks wajib `${VAR:?}`: compose menginterpolasi
+      # seluruh berkas saat parsing, jadi variabel yang hilang akan menggagalkan
+      # SETIAP perintah compose — termasuk `up -d timescaledb` yang tak ada
+      # hubungannya. Penegakannya ada di layanannya sendiri: app/main.py menolak
+      # start bila token kosong, sehingga jaminannya sama tanpa merusak alur dev.
+      CV_INTERNAL_TOKEN: ${CV_INTERNAL_TOKEN:-}
     ports:
       - "127.0.0.1:8800:8000"
     volumes:
       - ../cv-service-fastapi/models:/model:ro
 
+  # Port SENGAJA di-bind ke 127.0.0.1, bukan 0.0.0.0. Broker ini masih
+  # allow_anonymous (lihat mosquitto/mosquitto.conf) dan backend mengambil
+  # identitas device langsung dari nama topik — `binexa/{code}/sensor` — tanpa
+  # verifikasi apa pun. Selama itu belum diperbaiki, satu perintah
+  # mosquitto_pub dari jaringan yang sama sudah cukup untuk memalsukan
+  # pembacaan sensor unit mana pun, memicu alert palsu, atau menahan unit
+  # tetap "online" sehingga kerusakan nyata tak pernah terdeteksi.
+  #
+  # Membatasi ke loopback menutup akses itu tanpa memutus apa pun: ESP32 nyata
+  # tidak berbicara MQTT (kiosk yang merelaynya lewat HTTP), dan mqtt:listen
+  # serta simulate:devices berjalan di host yang sama.
+  #
+  # Ini MITIGASI, bukan perbaikan. Perbaikan sebenarnya = password_file +
+  # acl_file per-unit (TODO-PERBAIKAN.md task 1.3).
   mosquitto:
     image: eclipse-mosquitto:2
     ports:
-      - "1883:1883"
+      - "127.0.0.1:1883:1883"
     volumes:
       - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      # passwd GITIGNORED (hash password) — generate dari passwd.example.
+      # acl ter-commit: kebijakan, bukan rahasia, dan justru perlu di-review.
+      # Broker menolak start bila passwd belum dibuat — itu disengaja: lebih
+      # baik gagal terang-terangan daripada diam-diam kembali anonim.
+      - ./mosquitto/passwd:/mosquitto/config/passwd:ro
+      - ./mosquitto/acl:/mosquitto/config/acl:ro
+      - mosquitto-data-dev:/mosquitto/data
 
   # Postgres tanpa TimescaleDB — untuk menguji guard migration (PRD-Database.md §7:
   # migration harus tetap sukses tanpa extension). Jalankan dengan --profile test:
@@ -72,3 +102,4 @@ services:
 
 volumes:
   pgdata-dev:
+  mosquitto-data-dev:

@@ -1,12 +1,13 @@
 import base64
 import binascii
 import logging
+import secrets
 import time
 from contextlib import asynccontextmanager
 from io import BytesIO
 
 import anyio
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from PIL import Image, UnidentifiedImageError
 
 from app.config import Settings, get_settings
@@ -40,9 +41,39 @@ def build_classifier(settings: Settings) -> Classifier:
     return DummyClassifier()
 
 
+def require_internal_token(x_internal_token: str | None = Header(default=None)) -> None:
+    """Layanan ini hanya boleh dipanggil Laravel, bukan dunia luar.
+
+    Sebelumnya perlindungannya murni topologi: compose dev mem-bind ke
+    127.0.0.1 dan compose produksi berjanji memakai `expose` internal-only. Itu
+    benar, tapi seluruhnya bergantung pada konfigurasi jaringan yang belum ada —
+    satu kesalahan port di kemudian hari langsung membuka layanan inferensi ke
+    internet, dengan biaya CPU/GPU ditanggung sendiri.
+
+    Perbandingan konstan-waktu dipakai supaya panjang/isi token tidak bisa
+    disimpulkan dari selisih waktu balasan.
+    """
+    expected = get_settings().cv_internal_token
+
+    if not x_internal_token or not secrets.compare_digest(x_internal_token, expected):
+        raise HTTPException(status_code=401, detail="X-Internal-Token tidak valid")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
+
+    # Fail fast, pola yang sama dengan YoloClassifier saat weight tidak ada:
+    # lebih baik menolak start daripada berjalan diam-diam tanpa autentikasi.
+    # Token kosong = endpoint /classify terbuka untuk siapa pun yang bisa
+    # menjangkau portnya, dan itu justru kondisi yang ingin dihilangkan.
+    if not settings.cv_internal_token:
+        raise RuntimeError(
+            "CV_INTERNAL_TOKEN wajib diisi — layanan menolak berjalan tanpa "
+            "autentikasi. Generate dengan: python -c "
+            "\"import secrets; print(secrets.token_urlsafe(32))\""
+        )
+
     log.info("Starting CV service: mode=%s, model=%s", settings.cv_mode, settings.cv_model_path)
     app.state.classifier = build_classifier(settings)
     log.info("Classifier ready: %s", type(app.state.classifier).__name__)
@@ -66,6 +97,33 @@ def decode_and_validate(image_base64: str, settings: Settings) -> Image.Image:
 
     try:
         image = Image.open(BytesIO(raw))
+    except Image.DecompressionBombError:
+        # Pillow punya penjaganya sendiri (~178 juta piksel) dan MELEMPAR saat
+        # open. Tanpa ditangkap di sini, decompression bomb yang cukup besar
+        # justru menghasilkan HTTP 500 — kegagalan server untuk payload yang
+        # sebenarnya sudah berhasil ditolak dengan benar.
+        raise HTTPException(status_code=422, detail="Dimensi gambar tidak wajar")
+    except (UnidentifiedImageError, OSError):
+        raise HTTPException(status_code=422, detail="Payload bukan gambar valid")
+
+    # Batas BYTE di atas tidak melindungi dari decompression bomb: PNG 5 MB bisa
+    # mekar jadi puluhan gigabyte piksel saat di-decode. Pemeriksaan ini terjadi
+    # SEBELUM load(), memakai header gambar — jadi bom ditolak tanpa pernah
+    # dialokasikan memorinya.
+    #
+    # Pillow punya MAX_IMAGE_PIXELS bawaan (~178 juta), tapi ambangnya jauh di
+    # atas apa pun yang layanan ini butuhkan: kiosk hanya mengirim frame 640 px.
+    width, height = image.size
+    if width * height > settings.cv_max_pixels:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Dimensi gambar {width}x{height} melebihi batas "
+                f"{settings.cv_max_pixels} piksel"
+            ),
+        )
+
+    try:
         image.load()
     except (UnidentifiedImageError, OSError):
         raise HTTPException(status_code=422, detail="Payload bukan gambar valid")
@@ -73,7 +131,7 @@ def decode_and_validate(image_base64: str, settings: Settings) -> Image.Image:
     return image.convert("RGB")
 
 
-@app.post("/classify", response_model=ClassifyResponse)
+@app.post("/classify", response_model=ClassifyResponse, dependencies=[Depends(require_internal_token)])
 async def classify(req: ClassifyRequest) -> ClassifyResponse:
     settings = get_settings()
     t0 = time.monotonic()
@@ -103,6 +161,9 @@ async def classify(req: ClassifyRequest) -> ClassifyResponse:
     )
 
 
+# SENGAJA tanpa autentikasi: HEALTHCHECK di Dockerfile memanggilnya tanpa
+# kredensial, dan balasannya tidak memuat apa pun yang sensitif — hanya status,
+# mode, dan apakah model termuat.
 @app.get("/health", response_model=HealthResponse)
 async def health() -> HealthResponse:
     return HealthResponse(

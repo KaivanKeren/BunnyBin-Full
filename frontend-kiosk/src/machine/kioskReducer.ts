@@ -43,7 +43,11 @@ export const initialState: KioskState = {
 
 export type KioskAction =
   | { type: 'SCAN_START' }
-  | { type: 'SCAN_DONE'; detection: CvDetection; item: QuizItem }
+  // item boleh null: saat CV gagal mengenali objek tidak ada pertanyaan kuis
+  // yang jujur untuk diajukan, dan kiosk beralih ke mode manual (anak memilah
+  // sendiri). Memaksakan quiz item di sini berarti menebak isi tong — persis
+  // cara sampah berakhir di tong yang salah.
+  | { type: 'SCAN_DONE'; detection: CvDetection; item: QuizItem | null }
   | { type: 'ANSWER_CORRECT' }
   | { type: 'SORT_DONE' }
   | { type: 'ANSWER_WRONG'; choice: WasteCategory }

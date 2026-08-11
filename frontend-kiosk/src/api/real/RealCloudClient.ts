@@ -9,13 +9,27 @@ import type {
   QuizItem,
   SortLogPayload,
 } from '@/api/contracts'
-import { config } from '@/api/config'
+import { readCredentials } from '@/api/credentials'
 import { api } from '@/api/http'
 
 export class RealCloudClient implements ICloudClient {
-  /** Semua rute ingest di-scope per unit — token unit A tidak bisa menulis unit B (§7). */
+  /**
+   * Semua rute ingest di-scope per unit — token unit A tidak bisa menulis unit B (§7).
+   *
+   * unit_code dibaca dari kredensial hasil aktivasi, bukan dari env: keduanya
+   * datang dari respons yang sama, jadi kode di URL dijamin milik token yang
+   * dipakai. Dulu keduanya diisi terpisah lewat VITE_*, dan salah ketik satu
+   * huruf menghasilkan 403 di setiap POST sementara GET tetap jalan — kiosk
+   * terlihat sehat padahal tak ada satu pun data yang tersimpan.
+   */
   private get unitPath(): string {
-    return `/units/${config.unitCode}`
+    const credentials = readCredentials()
+
+    if (credentials === null) {
+      throw new Error('Perangkat belum diaktivasi')
+    }
+
+    return `/units/${credentials.unitCode}`
   }
 
   async getQuizBank(): Promise<QuizItem[]> {

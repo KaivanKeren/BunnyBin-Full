@@ -10,9 +10,13 @@ from app.config import get_settings
 from app.main import app, build_classifier
 
 
+TOKEN = "token-internal-untuk-test"
+
+
 @pytest.fixture(autouse=True)
-def classifier():
+def classifier(monkeypatch):
     # Lifespan tidak jalan via ASGITransport — pasang classifier manual.
+    monkeypatch.setenv("CV_INTERNAL_TOKEN", TOKEN)
     get_settings.cache_clear()
     app.state.classifier = build_classifier(get_settings())
     yield
@@ -21,6 +25,18 @@ def classifier():
 
 @pytest.fixture
 async def client():
+    """Client yang SUDAH terautentikasi — /classify menolak tanpa header ini."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        headers={"X-Internal-Token": TOKEN},
+    ) as c:
+        yield c
+
+
+@pytest.fixture
+async def anon_client():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
@@ -79,3 +95,82 @@ async def test_health(client):
 
     assert resp.status_code == 200
     assert resp.json() == {"status": "ok", "mode": "dummy", "model_loaded": False}
+
+
+# ── Autentikasi internal ──────────────────────────────────────────────────────
+
+
+async def test_classify_without_token_is_rejected(anon_client):
+    resp = await anon_client.post("/classify", json={"image_base64": image_b64(30)})
+
+    assert resp.status_code == 401
+
+
+async def test_classify_with_wrong_token_is_rejected(anon_client):
+    resp = await anon_client.post(
+        "/classify",
+        json={"image_base64": image_b64(30)},
+        headers={"X-Internal-Token": "token-keliru"},
+    )
+
+    assert resp.status_code == 401
+
+
+async def test_health_stays_open_for_docker_healthcheck(anon_client):
+    # HEALTHCHECK di Dockerfile memanggil endpoint ini tanpa kredensial.
+    # Mengunci /health akan membuat container selalu dilaporkan unhealthy.
+    resp = await anon_client.get("/health")
+
+    assert resp.status_code == 200
+
+
+async def test_service_refuses_to_start_without_a_token(monkeypatch):
+    # Fail fast, bukan diam-diam terbuka: token kosong berarti /classify bisa
+    # dipanggil siapa pun yang menjangkau portnya — kondisi yang justru sedang
+    # dihilangkan. Pola yang sama dipakai YoloClassifier saat weight tak ada.
+    from app.main import lifespan
+
+    monkeypatch.setenv("CV_INTERNAL_TOKEN", "")
+    get_settings.cache_clear()
+
+    with pytest.raises(RuntimeError, match="CV_INTERNAL_TOKEN"):
+        async with lifespan(app):
+            pass
+
+
+async def test_oversize_dimensions_are_rejected_before_decoding(client, monkeypatch):
+    # Batas BYTE tidak melihat decompression bomb: PNG kecil bisa mendeklarasikan
+    # dimensi raksasa yang baru mekar saat di-decode. Ambangnya diturunkan lewat
+    # env supaya test tetap murah — yang diuji logikanya, bukan daya tahan RAM.
+    monkeypatch.setenv("CV_MAX_PIXELS", "1000")
+    get_settings.cache_clear()
+
+    resp = await client.post("/classify", json={"image_base64": image_b64(30)})  # 64x64 = 4096 px
+
+    assert resp.status_code == 422
+    assert "melebihi" in resp.json()["detail"]
+
+
+async def test_pillow_own_bomb_guard_becomes_422_not_500(client, monkeypatch):
+    # Pillow melempar DecompressionBombError saat open untuk gambar yang sangat
+    # besar. Tanpa ditangkap, bom yang berhasil ditolak justru muncul sebagai
+    # HTTP 500 — kegagalan server untuk sesuatu yang penanganannya sudah benar.
+    def boom(*args, **kwargs):
+        raise Image.DecompressionBombError("terlalu besar")
+
+    monkeypatch.setattr(Image, "open", boom)
+
+    resp = await client.post("/classify", json={"image_base64": image_b64(30)})
+
+    assert resp.status_code == 422
+
+
+async def test_normal_kiosk_frame_still_passes(client):
+    # Frame kiosk sesungguhnya 640 px — batas dimensi tidak boleh menyentuhnya.
+    buf = BytesIO()
+    Image.new("RGB", (640, 480), (30, 30, 30)).save(buf, format="JPEG")
+    payload = base64.b64encode(buf.getvalue()).decode()
+
+    resp = await client.post("/classify", json={"image_base64": payload})
+
+    assert resp.status_code == 200

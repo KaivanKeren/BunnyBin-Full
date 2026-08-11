@@ -1,0 +1,12 @@
+# Dependency untuk menjalankan test CV service.
+#
+# Dipisah dari requirements.txt supaya image produksi tetap ramping, tapi
+# DIPIN di sini agar CI dan mesin lokal menjalankan versi yang sama —
+# menuliskannya langsung di workflow membuat keduanya bisa menyimpang diam-diam.
+#
+#   pip install -r requirements.txt -r requirements-dev.txt
+#
+# pytest-asyncio wajib: pytest.ini memakai `asyncio_mode = auto`, dan tanpa
+# paket ini seluruh test async dilewati (bukan gagal) — hijau palsu.
+pytest>=9.1,<10
+pytest-asyncio>=1.4,<2

@@ -57,7 +57,12 @@ export interface SortLogPayload {
   quiz_item_id: number | null
   category_detected: WasteCategory | null
   confidence: number | null
-  is_correct: boolean
+  // null = TIDAK DAPAT DINILAI, bukan "salah". Terjadi saat CV gagal mengenali
+  // objek: anak memilah manual, dan tidak ada kebenaran untuk membandingkannya.
+  // Mencatatnya sebagai false akan menurunkan akurasi di dashboard karena
+  // kegagalan kamera, bukan karena anaknya keliru. Backend sudah menerima null
+  // (KioskIngestController: is_correct nullable).
+  is_correct: boolean | null
   // Waktu kejadian, diisi saat sortiran terjadi — bukan saat berhasil terkirim.
   // Tanpa ini, log yang sempat mengendap di retry queue akan tercatat melenceng.
   ts?: string

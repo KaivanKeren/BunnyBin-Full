@@ -56,7 +56,7 @@ class DeviceIngestService
             'inorganic_pct' => $inorganic['pct'],
             'organic_distance_cm' => $organic['distance_cm'],
             'inorganic_distance_cm' => $inorganic['distance_cm'],
-            'recorded_at' => $this->timestamp($payload),
+            'recorded_at' => $this->timestamp($unit, $payload),
         ]);
 
         $this->alerts->evaluateFill($unit, $organic['pct'], $inorganic['pct']);
@@ -101,7 +101,7 @@ class DeviceIngestService
                 ? (float) $payload['confidence']
                 : null,
             'is_correct' => $isCorrect,
-            'created_at' => $this->timestamp($payload),
+            'created_at' => $this->timestamp($unit, $payload),
         ]);
     }
 
@@ -149,14 +149,58 @@ class DeviceIngestService
     }
 
     /**
+     * Waktu kejadian menurut device, DIBATASI ke rentang yang masuk akal.
+     *
+     * `recorded_at` dan `created_at` adalah kolom partisi hypertable TimescaleDB.
+     * Satu baris bertanggal 2099 memaksa pembuatan chunk yang jauh di luar
+     * rentang normal, membuat grafik ter-skala habis oleh satu outlier, dan bisa
+     * membuat kebijakan retensi berperilaku tak terduga.
+     *
+     * DINORMALISASI, BUKAN DITOLAK — ini keputusan yang disengaja. Penyebab
+     * paling mungkin dari ts yang melenceng bukan serangan, melainkan tablet
+     * kiosk yang jam sistemnya belum sinkron NTP setelah reboot. Menolaknya
+     * dengan 422 berarti kiosk menandainya CloudRejectedError (api/errors.ts:39
+     * — 422 tidak termasuk RETRYABLE_STATUSES) lalu MEMBUANG payload itu
+     * selamanya. Sortiran anak hilang seluruhnya gara-gara jam yang salah.
+     *
+     * Jatuh ke now() menyelamatkan datanya; log warning membuat jam yang
+     * melenceng tetap terlihat, bukan tersembunyi.
+     *
      * @param  array<string, mixed>  $payload
      */
-    private function timestamp(array $payload): Carbon
+    private function timestamp(Unit $unit, array $payload): Carbon
     {
-        try {
-            return isset($payload['ts']) ? Carbon::parse($payload['ts']) : now();
-        } catch (\Throwable) {
+        if (! isset($payload['ts'])) {
             return now();
         }
+
+        try {
+            $ts = Carbon::parse($payload['ts']);
+        } catch (\Throwable) {
+            Log::warning("Ingest: ts tidak bisa diurai dari {$unit->code}, dipakai waktu server", [
+                'ts' => $payload['ts'],
+            ]);
+
+            return now();
+        }
+
+        // Batas masa lalu longgar (30 hari): antrean retry kiosk menyimpan sampai
+        // 500 entri dan bertahan melewati reboot, jadi log yang benar-benar sah
+        // bisa tiba berhari-hari terlambat. Yang ingin dicegah bukan itu,
+        // melainkan tanggal absurd (1970 / 2099) yang merusak partisi.
+        //
+        // Batas masa depan ketat (5 menit): tidak ada alasan sah bagi device
+        // melaporkan masa depan selain jam yang salah; 5 menit hanya memberi
+        // kelonggaran untuk selisih jam wajar antar-mesin.
+        if ($ts->greaterThan(now()->addMinutes(5)) || $ts->lessThan(now()->subDays(30))) {
+            Log::warning("Ingest: ts di luar rentang wajar dari {$unit->code}, dipakai waktu server", [
+                'ts' => $ts->toIso8601String(),
+                'server_now' => now()->toIso8601String(),
+            ]);
+
+            return now();
+        }
+
+        return $ts;
     }
 }
