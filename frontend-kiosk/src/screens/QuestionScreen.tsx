@@ -12,13 +12,18 @@ export default function QuestionScreen() {
   const { wrongChoice, detection } = state
   const detectedCategory = detection?.category ?? null
   // Tampilkan hasil deteksi CV apa adanya (label model), bukan nama quiz item.
-  const detectedLabel =
-    prettyLabel(detection?.label) ??
-    (detectedCategory === 'organic'
-      ? 'Sampah Organik'
-      : detectedCategory === 'inorganic'
-        ? 'Sampah Anorganik'
-        : null)
+  //
+  // Saat model TIDAK memberi nama benda, yang ditampilkan adalah "Benda Ini" —
+  // BUKAN nama kategorinya. Substitusi lama ("Sampah Anorganik") membuat
+  // kegagalan mengenali objek tampil persis seperti pengenalan yang berhasil,
+  // dan anak membaca nama kategori seolah itu nama bendanya. Dari situ pula
+  // datang laporan "harusnya botol, malah berlabel Sampah Anorganik": sebagian
+  // memang model kategori (lihat docker/docker-compose.yml), sebagian lagi
+  // baris inilah yang mengarangnya.
+  //
+  // Kategorinya sendiri tidak hilang — ia tetap tampil di tempatnya sendiri di
+  // bawah, sebagai kategori. Yang dihapus hanya penyamarannya sebagai nama.
+  const detectedLabel = prettyLabel(detection?.label) ?? (detectedCategory ? 'Benda Ini' : null)
   const confidencePct =
     detection && detection.confidence > 0 ? Math.round(detection.confidence * 100) : null
 

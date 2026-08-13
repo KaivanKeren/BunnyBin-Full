@@ -76,6 +76,13 @@ services:
       CV_MODE: ${CV_MODE:-real}
       CV_MODEL_PATH: ${CV_MODEL_PATH:-/model/best.pt}
       CV_INTERNAL_TOKEN: ${CV_INTERNAL_TOKEN:?wajib di-set}
+      # CV_MODE=openai: penyedia /chat/completions mana pun (Groq/Ollama/…).
+      # Lihat cv-service-fastapi/.env.example untuk nilai per penyedia.
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash}
       ROBOFLOW_MODEL_ID: ${ROBOFLOW_MODEL_ID:-}
       ROBOFLOW_API_KEY: ${ROBOFLOW_API_KEY:-}
     volumes:

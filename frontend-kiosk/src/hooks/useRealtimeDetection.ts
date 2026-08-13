@@ -47,6 +47,10 @@ export function useRealtimeDetection() {
   const lastConfirmedRef = useRef<CvDetection | null>(null)
   const frameCountRef = useRef(0)
   const fpsTimerRef = useRef<number>(Date.now())
+  // Sengaja TIDAK ikut di-reset oleh `reset()`: status jalur cloud milik layanan,
+  // bukan milik satu sesi pindai. Me-reset-nya tiap pemindaian akan mencetak
+  // ulang peringatan yang sama untuk setiap anak yang lewat.
+  const wasDegradedRef = useRef(false)
 
   const reset = useCallback(() => {
     historyRef.current = []
@@ -87,6 +91,23 @@ export function useRealtimeDetection() {
               fpsTimerRef.current = now
               logger.debug(`[detect] ⏱️ FPS: ${Math.round(fps)}`)
               setState((s) => ({ ...s, fps: Math.round(fps) }))
+            }
+
+            // Dicatat saat status BERUBAH, bukan tiap frame. Yang perlu diketahui
+            // adalah kapan jalur utama berhenti melayani dan kapan ia pulih —
+            // dua peristiwa, bukan satu keadaan yang diulang ratusan kali. Kiosk
+            // menyala berhari-hari; mencatat tiap frame akan menenggelamkan
+            // peralihannya sendiri di dalam pengulangan.
+            const degraded = detection.degraded ?? false
+            if (degraded !== wasDegradedRef.current) {
+              wasDegradedRef.current = degraded
+              if (degraded) {
+                logger.warn(
+                  `[detect] ☁️✖ Jalur utama BERHENTI melayani (${detection.degraded_reason ?? 'sebab tak diketahui'}) — jawaban kini dari model cadangan, mutunya berbeda`,
+                )
+              } else {
+                logger.warn('[detect] ☁️✔ Jalur utama melayani lagi')
+              }
             }
 
             const entry: LiveDetection = { detection, timestamp: now }

@@ -7,6 +7,7 @@ from httpx import ASGITransport, AsyncClient
 from PIL import Image
 
 from app.config import get_settings
+from app.inference.base import Classifier, Detection
 from app.main import app, build_classifier
 
 
@@ -17,6 +18,11 @@ TOKEN = "token-internal-untuk-test"
 def classifier(monkeypatch):
     # Lifespan tidak jalan via ASGITransport — pasang classifier manual.
     monkeypatch.setenv("CV_INTERNAL_TOKEN", TOKEN)
+    # CV_MODE dipatok eksplisit karena Settings membaca .env: tanpa ini, test
+    # ikut memakai mode yang kebetulan sedang dipakai developer, dan suite bisa
+    # mencoba memanggil API cloud sungguhan. Environment variable menang atas
+    # .env, jadi satu baris ini cukup untuk membuat test hermetis.
+    monkeypatch.setenv("CV_MODE", "dummy")
     get_settings.cache_clear()
     app.state.classifier = build_classifier(get_settings())
     yield
@@ -94,7 +100,16 @@ async def test_health(client):
     resp = await client.get("/health")
 
     assert resp.status_code == 200
-    assert resp.json() == {"status": "ok", "mode": "dummy", "model_loaded": False}
+    # `vlm` null di mode non-cloud: DummyClassifier tidak punya kuota untuk
+    # dilaporkan. Di mode gemini/vlm field ini berisi penghitung panggilan dan
+    # sisa jeda pemutus — permukaan yang membuat "kuota habis tiga jam lalu"
+    # terlihat dalam satu curl, bukan disimpulkan dari akurasi yang memburuk.
+    assert resp.json() == {
+        "status": "ok",
+        "mode": "dummy",
+        "model_loaded": False,
+        "vlm": None,
+    }
 
 
 # ── Autentikasi internal ──────────────────────────────────────────────────────
@@ -174,3 +189,98 @@ async def test_normal_kiosk_frame_still_passes(client):
     resp = await client.post("/classify", json={"image_base64": payload})
 
     assert resp.status_code == 200
+
+
+# ── Penanda degradasi & perekam frame ─────────────────────────────────────────
+
+
+class DegradedStub(Classifier):
+    """Classifier yang mengaku dilayani cadangan — persis bentuk jawaban saat
+    kuota cloud habis."""
+
+    @property
+    def model_loaded(self) -> bool:
+        return True
+
+    def classify(self, image):
+        return Detection(
+            category="inorganic",
+            confidence=0.88,
+            bbox=None,
+            model_version="gemini-3.5-flash-cadangan-best",
+            label="botol_plastik",
+            degraded=True,
+            degraded_reason="kuota",
+        )
+
+
+async def test_degraded_diteruskan_ke_pemanggil(client):
+    # Ini inti P0: tanpa field ini, kuota habis terlihat PERSIS seperti
+    # keberhasilan di sepanjang jalur — Laravel, kiosk, dan layar anak semuanya
+    # menampilkan hasil model cadangan dengan percaya diri yang sama.
+    app.state.classifier = DegradedStub()
+
+    body = (await client.post("/classify", json={"image_base64": image_b64(200)})).json()
+
+    assert body["degraded"] is True
+    assert body["degraded_reason"] == "kuota"
+    assert body["category"] == "inorganic"  # anak tetap dapat jawaban
+
+
+async def test_jawaban_normal_tidak_ditandai_degraded(client):
+    body = (await client.post("/classify", json={"image_base64": image_b64(200)})).json()
+
+    assert body["degraded"] is False
+    assert body["degraded_reason"] is None
+
+
+async def test_capture_menyimpan_frame_dan_sidecar(client, monkeypatch, tmp_path):
+    # Perekam ini satu-satunya sumber data lapangan. Metrik training diukur pada
+    # split dataset publik yang sama dengan train split-nya, jadi tanpa frame dari
+    # kamera kiosk sungguhan tidak ada angka yang bisa dipakai menilai apa pun.
+    monkeypatch.setenv("CV_CAPTURE_DIR", str(tmp_path))
+    get_settings.cache_clear()
+
+    await client.post("/classify", json={"image_base64": image_b64(200)})
+
+    images = list(tmp_path.rglob("*.jpg"))
+    sidecars = list(tmp_path.rglob("*.json"))
+    assert len(images) == 1
+    assert len(sidecars) == 1
+
+    import json as _json
+
+    record = _json.loads(sidecars[0].read_text(encoding="utf-8"))
+    assert record["predicted"]["category"] == "inorganic"
+    # Kebenaran dibiarkan null — itu kerja manusia, dan field yang ADA tapi null
+    # membuat "berapa yang belum dilabeli" bisa dihitung.
+    assert record["truth_label"] is None
+    assert record["truth_category"] is None
+
+
+async def test_capture_mati_secara_bawaan(client, tmp_path):
+    # Menyimpan gambar anak-anak harus keputusan sadar, bukan perilaku bawaan.
+    await client.post("/classify", json={"image_base64": image_b64(200)})
+
+    assert list(tmp_path.rglob("*.jpg")) == []
+
+
+async def test_gagal_menyimpan_tidak_menggagalkan_klasifikasi(client, monkeypatch, tmp_path):
+    # Disk penuh saat demo harus berakhir sebagai satu baris warning, bukan
+    # sebagai kiosk yang berhenti menjawab.
+    monkeypatch.setenv("CV_CAPTURE_DIR", str(tmp_path / "target"))
+    get_settings.cache_clear()
+
+    # Payload dibuat DULU: image_b64 juga memakai Image.save, jadi menambal
+    # method itu lebih dulu akan menjatuhkan test pada baris yang tidak diuji.
+    payload = image_b64(200)
+
+    def boom(*args, **kwargs):
+        raise OSError("disk penuh")
+
+    monkeypatch.setattr(Image.Image, "save", boom)
+
+    resp = await client.post("/classify", json={"image_base64": payload})
+
+    assert resp.status_code == 200
+    assert resp.json()["category"] == "inorganic"

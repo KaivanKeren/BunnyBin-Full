@@ -1,10 +1,14 @@
 import base64
 import binascii
+import json
 import logging
 import secrets
 import time
+import uuid
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from io import BytesIO
+from pathlib import Path
 
 import anyio
 from fastapi import Depends, FastAPI, Header, HTTPException
@@ -49,6 +53,33 @@ def build_classifier(settings: Settings) -> Classifier:
             model=settings.vlm_model,
             timeout=settings.vlm_timeout_s,
             fallback=build_local_fallback(settings),
+            max_rpm=settings.vlm_max_rpm,
+            cache_ttl_s=settings.vlm_cache_ttl_s,
+        )
+
+    if settings.cv_mode == "openai":
+        from app.inference.openai_compat import OpenAiCompatVlm
+
+        if not settings.openai_base_url:
+            raise RuntimeError(
+                "CV_MODE=openai membutuhkan OPENAI_BASE_URL "
+                "(mis. https://api.groq.com/openai/v1 atau http://localhost:11434/v1)"
+            )
+        if not settings.openai_model:
+            raise RuntimeError("CV_MODE=openai membutuhkan OPENAI_MODEL")
+        # OPENAI_API_KEY sengaja TIDAK diwajibkan: Ollama/llama.cpp lokal tidak
+        # memakai kunci. Salah konfigurasi terhadap penyedia cloud tetap ketahuan
+        # cepat — 401 pada panggilan pertama, tercatat sebagai degraded=jaringan.
+
+        return OpenAiCompatVlm(
+            base_url=settings.openai_base_url,
+            api_key=settings.openai_api_key,
+            model=settings.openai_model,
+            timeout=settings.vlm_timeout_s,
+            fallback=build_local_fallback(settings),
+            max_rpm=settings.vlm_max_rpm,
+            cache_ttl_s=settings.vlm_cache_ttl_s,
+            json_mode=settings.openai_json_mode,
         )
 
     if settings.cv_mode == "gemini":
@@ -62,6 +93,9 @@ def build_classifier(settings: Settings) -> Classifier:
             model=settings.gemini_model,
             timeout=settings.vlm_timeout_s,
             fallback=build_local_fallback(settings),
+            thinking_level=settings.gemini_thinking_level,
+            max_rpm=settings.vlm_max_rpm,
+            cache_ttl_s=settings.vlm_cache_ttl_s,
         )
 
     return DummyClassifier()
@@ -177,6 +211,53 @@ def decode_and_validate(image_base64: str, settings: Settings) -> Image.Image:
     return image.convert("RGB")
 
 
+def capture_frame(image: Image.Image, response: ClassifyResponse, directory: str) -> None:
+    """Simpan frame + prediksinya untuk membangun set evaluasi LAPANGAN.
+
+    Kenapa ini ada. Model dilatih dari dataset publik dan diukur pada split dari
+    dataset publik yang sama — angkanya menjawab "bisakah ia mengenali foto dari
+    fotografer yang sama", bukan "bisakah ia mengenali botol di tangan anak di
+    bawah lampu neon kelas". Tanpa gambar dari kamera kiosk sungguhan, tidak ada
+    satu pun angka yang bisa dipakai untuk menilai perubahan apa pun.
+
+    Frame ditulis apa adanya, TANPA label kebenaran: yang disimpan adalah tebakan
+    model. Melabelinya kerja manusia (lihat training/eval_field.py), dan justru
+    tebakan yang tersimpan itu yang membuat pelabelan cepat — sebagian besar
+    tinggal dibenarkan, bukan diketik dari nol.
+
+    Kegagalan menulis TIDAK PERNAH menggagalkan klasifikasi. Disk penuh saat demo
+    harus berakhir sebagai satu baris warning, bukan sebagai kiosk yang mati.
+    """
+    try:
+        # Satu subfolder per hari — supaya sesi bisa dibedakan tanpa membaca
+        # setiap sidecar, dan supaya satu folder tak pernah berisi puluhan ribu
+        # berkas setelah beberapa minggu dipakai.
+        day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        target = Path(directory) / day
+        target.mkdir(parents=True, exist_ok=True)
+
+        stem = f"{datetime.now(timezone.utc).strftime('%H%M%S')}-{uuid.uuid4().hex[:8]}"
+        image.save(target / f"{stem}.jpg", format="JPEG", quality=90)
+        (target / f"{stem}.json").write_text(
+            json.dumps(
+                {
+                    "predicted": response.model_dump(),
+                    # Diisi manusia saat pelabelan. Dibiarkan null, bukan
+                    # dihilangkan, supaya berkas yang belum dilabeli bisa
+                    # dihitung — "berapa yang tersisa" adalah pertanyaan pertama
+                    # siapa pun yang membuka folder ini.
+                    "truth_label": None,
+                    "truth_category": None,
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+    except OSError as e:
+        log.warning("Gagal menyimpan frame tangkapan ke %s: %s", directory, e)
+
+
 @app.post("/classify", response_model=ClassifyResponse, dependencies=[Depends(require_internal_token)])
 async def classify(req: ClassifyRequest) -> ClassifyResponse:
     settings = get_settings()
@@ -193,27 +274,43 @@ async def classify(req: ClassifyRequest) -> ClassifyResponse:
 
     below_threshold = detection.confidence < settings.cv_confidence_threshold
     log.info(
-        "classify: label=%s cat=%s conf=%.3f bbox=%s below_thr=%s (%.0fms)",
+        "classify: label=%s cat=%s conf=%.3f bbox=%s below_thr=%s degraded=%s%s (%.0fms)",
         detection.label, detection.category, detection.confidence,
-        detection.bbox, below_threshold, elapsed_ms,
+        detection.bbox, below_threshold, detection.degraded,
+        f" [{detection.degraded_reason}]" if detection.degraded_reason else "",
+        elapsed_ms,
     )
 
-    return ClassifyResponse(
+    response = ClassifyResponse(
         category=None if below_threshold else detection.category,
         label=detection.label,
         confidence=detection.confidence,
         bbox=detection.bbox,
         model_version=detection.model_version,
+        degraded=detection.degraded,
+        degraded_reason=detection.degraded_reason,
     )
+
+    # Simpan frame lapangan bila diminta. Ini sumber data satu-satunya yang benar
+    # untuk mengukur akurasi NYATA — lihat training/eval_field.py.
+    if settings.cv_capture_dir:
+        capture_frame(image, response, settings.cv_capture_dir)
+
+    return response
 
 
 # SENGAJA tanpa autentikasi: HEALTHCHECK di Dockerfile memanggilnya tanpa
 # kredensial, dan balasannya tidak memuat apa pun yang sensitif — hanya status,
-# mode, dan apakah model termuat.
+# mode, apakah model termuat, dan penghitung agregat jalur cloud. Tidak ada nama
+# model, kunci, atau isi gambar di sini.
 @app.get("/health", response_model=HealthResponse)
 async def health() -> HealthResponse:
+    classifier = app.state.classifier
+    vlm_health = classifier.health() if hasattr(classifier, "health") else None
+
     return HealthResponse(
         status="ok",
         mode=get_settings().cv_mode,
-        model_loaded=app.state.classifier.model_loaded,
+        model_loaded=classifier.model_loaded,
+        vlm=vlm_health,
     )

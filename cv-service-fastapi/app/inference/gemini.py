@@ -28,7 +28,16 @@ TIGA PERBEDAAN DARI CLAUDE yang jadi bug kalau kodenya disalin mentah:
 import logging
 
 from app.inference.base import Classifier
-from app.inference.vlm import SCHEMA, SYSTEM_PROMPT, USER_PROMPT, VlmClassifier
+from app.inference.vlm import (
+    SCHEMA,
+    SYSTEM_PROMPT,
+    USER_PROMPT,
+    ProviderBlocked,
+    QuotaExhausted,
+    VlmClassifier,
+    is_quota_error,
+    retry_after_seconds,
+)
 
 log = logging.getLogger("cv.gemini")
 
@@ -45,22 +54,37 @@ GEMINI_SCHEMA = {k: v for k, v in SCHEMA.items() if k != "additionalProperties"}
 
 # finish_reason yang berarti jawaban tidak utuh/tidak boleh dipakai. STOP adalah
 # satu-satunya yang normal; sisanya harus jatuh ke cadangan, bukan diurai paksa.
-BAD_FINISH = {
+#
+# Dipisah dua karena keduanya menunjuk masalah yang berbeda. Yang DIBLOKIR berarti
+# filter keamanan tersentuh — bila itu sering terjadi, penyebabnya frame kiosk
+# (yang berisi anak-anak) dan obatnya ada di sisi prompt/safety settings. Yang
+# TERPOTONG berarti jawabannya kehabisan token, dan obatnya menaikkan
+# max_output_tokens. Digabung jadi satu penghitung, keduanya tak bisa dibedakan.
+BLOCKED_FINISH = {
     "SAFETY",
     "PROHIBITED_CONTENT",
     "IMAGE_SAFETY",
     "BLOCKLIST",
     "RECITATION",
     "SPII",
-    "MAX_TOKENS",
-    "OTHER",
 }
+TRUNCATED_FINISH = {"MAX_TOKENS", "OTHER"}
+BAD_FINISH = BLOCKED_FINISH | TRUNCATED_FINISH
 
 
 class GeminiVlm(VlmClassifier):
     """Gemini vision dengan cadangan lokal, sekontrak AnthropicVlm."""
 
-    def __init__(self, api_key: str, model: str, timeout: float, fallback: Classifier | None = None):
+    def __init__(
+        self,
+        api_key: str,
+        model: str,
+        timeout: float,
+        fallback: Classifier | None = None,
+        thinking_level: str = "",
+        max_rpm: int = 0,
+        cache_ttl_s: float = 0.0,
+    ):
         try:
             from google import genai
             from google.genai import types
@@ -69,7 +93,9 @@ class GeminiVlm(VlmClassifier):
                 "CV_MODE=gemini membutuhkan package google-genai (pip install google-genai)"
             ) from e
 
-        super().__init__(version=model, fallback=fallback)
+        super().__init__(
+            version=model, fallback=fallback, max_rpm=max_rpm, cache_ttl_s=cache_ttl_s
+        )
         self._types = types
         self._model = model
         # timeout SDK dalam milidetik — lihat catatan 1 di docstring modul.
@@ -77,11 +103,24 @@ class GeminiVlm(VlmClassifier):
             api_key=api_key,
             http_options=types.HttpOptions(timeout=int(timeout * 1000)),
         )
+        # Dibiarkan None bila tidak diminta: dukungan thinking berbeda antar model
+        # (gemini-3.5-flash menerima thinking_level tapi MENOLAK thinking_budget=0
+        # dengan 400), dan konfigurasi yang ditolak berakhir sebagai kegagalan
+        # senyap — kiosk tetap menjawab, tapi sepenuhnya dari model cadangan.
+        thinking = types.ThinkingConfig(thinking_level=thinking_level) if thinking_level else None
+
         self._config = types.GenerateContentConfig(
             system_instruction=SYSTEM_PROMPT,
             response_mime_type="application/json",
             response_schema=GEMINI_SCHEMA,
-            max_output_tokens=256,
+            # Jawabannya sendiri hanya ~40 token, tapi di Gemini token THINKING
+            # ikut memakan jatah ini. Dengan 256, sebagian panggilan berhenti di
+            # MAX_TOKENS sebelum sempat menulis JSON-nya — terlihat sebagai
+            # "jawaban dihentikan" lalu jatuh ke cadangan. Terpantau langsung saat
+            # uji hidup; 1024 memberi ruang thinking tanpa biaya berarti karena
+            # yang ditagih adalah token yang benar-benar dipakai.
+            max_output_tokens=1024,
+            thinking_config=thinking,
             safety_settings=[
                 types.SafetySetting(category=c, threshold="BLOCK_ONLY_HIGH")
                 for c in (
@@ -98,30 +137,42 @@ class GeminiVlm(VlmClassifier):
         )
 
     def _ask(self, image_jpeg: bytes) -> str:
-        response = self._client.models.generate_content(
-            model=self._model,
-            contents=[
-                self._types.Part.from_bytes(data=image_jpeg, mime_type="image/jpeg"),
-                USER_PROMPT,
-            ],
-            config=self._config,
-        )
+        try:
+            response = self._client.models.generate_content(
+                model=self._model,
+                contents=[
+                    self._types.Part.from_bytes(data=image_jpeg, mime_type="image/jpeg"),
+                    USER_PROMPT,
+                ],
+                config=self._config,
+            )
+        except Exception as e:
+            # 429 diangkat jadi tipe tersendiri supaya pemanggil bisa MEMBUKA
+            # PEMUTUS, bukan sekadar mencoba lagi 2 detik kemudian. Tanpa ini,
+            # kuota yang habis terlihat identik dengan kabel LAN tercabut —
+            # padahal yang satu pulih sendiri dan yang lain tidak.
+            if is_quota_error(e):
+                raise QuotaExhausted(str(e), retry_after_seconds(e)) from e
+            raise
 
         # Jalur pemblokiran 1: permintaannya yang ditolak — tidak ada kandidat sama sekali.
         feedback = getattr(response, "prompt_feedback", None)
         if feedback is not None and getattr(feedback, "block_reason", None):
-            raise RuntimeError(f"prompt diblokir: {feedback.block_reason}")
+            raise ProviderBlocked(f"prompt diblokir: {feedback.block_reason}")
 
         candidates = getattr(response, "candidates", None)
         if not candidates:
-            raise RuntimeError("balasan tanpa kandidat")
+            raise ProviderBlocked("balasan tanpa kandidat")
 
         # Jalur pemblokiran 2: jawabannya yang dihentikan di tengah jalan.
         finish = getattr(candidates[0], "finish_reason", None)
         if finish is not None:
             name = getattr(finish, "name", None) or str(finish)
-            if name.rsplit(".", 1)[-1] in BAD_FINISH:
-                raise RuntimeError(f"jawaban dihentikan: {name}")
+            short = name.rsplit(".", 1)[-1]
+            if short in BLOCKED_FINISH:
+                raise ProviderBlocked(f"jawaban dihentikan: {name}")
+            if short in TRUNCATED_FINISH:
+                raise RuntimeError(f"jawaban terpotong: {name}")
 
         text = response.text
         if not text:

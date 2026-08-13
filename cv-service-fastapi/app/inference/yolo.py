@@ -1,9 +1,12 @@
+import logging
 from pathlib import Path
 
 from PIL import Image
 
 from app.config import resolve_category
 from app.inference.base import Classifier, Detection
+
+log = logging.getLogger("cv.yolo")
 
 
 class YoloClassifier(Classifier):
@@ -42,6 +45,41 @@ class YoloClassifier(Classifier):
                 self._imgsz = int(train_imgsz[0] if isinstance(train_imgsz, (list, tuple)) else train_imgsz)
         except Exception:
             pass
+
+        self._warn_unmapped_classes()
+
+    def _warn_unmapped_classes(self) -> None:
+        """Laporkan kelas model yang tidak punya kategori di LABEL_MAP.
+
+        Kelas yang tak terpetakan menghasilkan category=None, yang di endpoint
+        tidak bisa dibedakan dari "tidak ada objek di frame". Jadi kekeliruan
+        pemetaan tidak muncul sebagai error — ia muncul sebagai kiosk yang gagal
+        mengenali benda yang jelas-jelas terlihat, dan itu didiagnosis sebagai
+        masalah akurasi model.
+
+        Ini WARNING, bukan penolakan start. Model dengan beberapa kelas asing
+        (mis. bobot COCO untuk demo) tetap berguna; yang tak boleh terjadi adalah
+        ketidakcocokannya tidak diketahui.
+
+        Arah sebaliknya juga dilaporkan. LABEL_MAP_NAMED memuat 17 nama sementara
+        bobot yang ter-deploy hanya punya 9 kelas — sisanya janji yang tidak bisa
+        ditepati model mana pun, dan satu-satunya tempat itu terlihat adalah di
+        sini.
+        """
+        try:
+            names = set(self._model.names.values())
+        except Exception:  # noqa: BLE001 — introspeksi checkpoint tak boleh menggagalkan start
+            return
+
+        unmapped = sorted(n for n in names if resolve_category(n) is None)
+        if unmapped:
+            log.warning(
+                "Model %s punya %d kelas TANPA kategori di LABEL_MAP: %s — "
+                "deteksi kelas ini akan terlihat seperti 'tidak ada objek'",
+                self._version, len(unmapped), ", ".join(unmapped),
+            )
+
+        log.info("Model %s memuat %d kelas: %s", self._version, len(names), ", ".join(sorted(names)))
 
     @property
     def model_loaded(self) -> bool:
