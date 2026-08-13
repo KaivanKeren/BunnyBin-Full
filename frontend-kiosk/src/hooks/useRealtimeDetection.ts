@@ -15,9 +15,22 @@ export interface RealtimeDetectionState {
   fps: number
 }
 
-const DETECT_INTERVAL_MS = 200
+// Jeda dan jumlah konfirmasi disetel untuk CV_MODE=vlm, di mana setiap frame
+// adalah satu panggilan API berbayar dengan latensi jaringan — bukan inferensi
+// lokal 35 ms yang praktis gratis.
+//
+// Pada 200 ms, loop mengirim lima frame per detik dan menumpuk di belakang
+// latensi yang tak pernah bisa dikejarnya; pada konfirmasi 2 frame, setiap
+// sortiran membayar dua kali untuk jawaban yang sama. 2000 ms + konfirmasi
+// tunggal membuat satu sortiran normal selesai dalam satu panggilan.
+//
+// Mesin di KioskProvider tidak berubah dan tetap menanggung sisanya: bila frame
+// pertama tak meyakinkan, loop mencoba lagi tiap 2 detik sampai SCAN_TIMEOUT_MS
+// (10 dtk), lalu memakai deteksi terbaik yang sempat terkumpul — atau jatuh ke
+// mode manual agar anak yang memutuskan, bukan sampahnya dibuang tak tersortir.
+const DETECT_INTERVAL_MS = 2000
 const STABLE_THRESHOLD = 0.4
-const STABLE_CONFIRM_COUNT = 2
+const STABLE_CONFIRM_COUNT = 1
 const MAX_HISTORY = 10
 
 export function useRealtimeDetection() {
@@ -34,6 +47,10 @@ export function useRealtimeDetection() {
   const lastConfirmedRef = useRef<CvDetection | null>(null)
   const frameCountRef = useRef(0)
   const fpsTimerRef = useRef<number>(Date.now())
+  // Sengaja TIDAK ikut di-reset oleh `reset()`: status jalur cloud milik layanan,
+  // bukan milik satu sesi pindai. Me-reset-nya tiap pemindaian akan mencetak
+  // ulang peringatan yang sama untuk setiap anak yang lewat.
+  const wasDegradedRef = useRef(false)
 
   const reset = useCallback(() => {
     historyRef.current = []
@@ -74,6 +91,23 @@ export function useRealtimeDetection() {
               fpsTimerRef.current = now
               logger.debug(`[detect] ⏱️ FPS: ${Math.round(fps)}`)
               setState((s) => ({ ...s, fps: Math.round(fps) }))
+            }
+
+            // Dicatat saat status BERUBAH, bukan tiap frame. Yang perlu diketahui
+            // adalah kapan jalur utama berhenti melayani dan kapan ia pulih —
+            // dua peristiwa, bukan satu keadaan yang diulang ratusan kali. Kiosk
+            // menyala berhari-hari; mencatat tiap frame akan menenggelamkan
+            // peralihannya sendiri di dalam pengulangan.
+            const degraded = detection.degraded ?? false
+            if (degraded !== wasDegradedRef.current) {
+              wasDegradedRef.current = degraded
+              if (degraded) {
+                logger.warn(
+                  `[detect] ☁️✖ Jalur utama BERHENTI melayani (${detection.degraded_reason ?? 'sebab tak diketahui'}) — jawaban kini dari model cadangan, mutunya berbeda`,
+                )
+              } else {
+                logger.warn('[detect] ☁️✔ Jalur utama melayani lagi')
+              }
             }
 
             const entry: LiveDetection = { detection, timestamp: now }

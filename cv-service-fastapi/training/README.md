@@ -124,5 +124,85 @@ mode: build dengan `INSTALL_REAL=true`, mount folder `models/` ke `/model`, set
 | `train.py` | latih model kustom (transfer learning) |
 | `make_demo_model.py` | hasilkan model demo COCO (`models/best-demo.pt`) |
 | `smoke_real_inference.py` | smoke-test inference nyata tanpa hardware |
+| `eval_field.py` | **ukur akurasi pada foto LAPANGAN** (lihat §4) |
 | `../requirements-real.txt` | dependency real mode (ultralytics, opencv) |
 | `../models/` | tempat menaruh `best.pt` / `best-demo.pt` (git-ignored) |
+
+
+---
+
+## 4. Evaluasi lapangan — angka yang sebenarnya penting
+
+**Baca ini sebelum melatih ulang apa pun.**
+
+`runs/bunnybin-combined` melaporkan mAP50 = 0,82. Angka itu benar, dan sekaligus
+tidak menjawab pertanyaan yang penting. Val split-nya diambil dari kumpulan foto
+publik yang sama dengan train split-nya, jadi yang diukur adalah *"bisakah model
+mengenali foto dari fotografer yang sama"* — bukan *"bisakah ia mengenali botol di
+tangan anak SD di bawah lampu neon kelas"*.
+
+Itu sebabnya metrik terlihat bagus sementara hasil lapangan terasa buruk. Tidak
+ada yang bertentangan; metriknya memang tidak pernah mengukur hal yang
+dipedulikan. Selama tidak ada angka lapangan, setiap perbaikan model adalah
+tebakan yang tak bisa dibantah maupun dibuktikan.
+
+### a. Kumpulkan frame
+
+```bash
+CV_CAPTURE_DIR=training/field_eval uvicorn app.main:app
+```
+
+Lalu pakai kiosk seperti biasa. Tiap frame yang diklasifikasi disimpan bersama
+sidecar `.json` berisi tebakan model.
+
+- **Target 100–200 frame.** Cukup untuk sinyal yang bisa dipercaya.
+- **Ambil di kondisi PEMAKAIAN.** Ruangan, jarak, dan pencahayaan yang sama.
+  Diambil di meja kerja yang terang, hasilnya akan sama menyesatkannya dengan
+  dataset publik.
+- **Sertakan frame KOSONG** — tangan kosong, meja, lantai, anak tanpa benda.
+  Ini kasus yang paling sering salah: `best.pt` dilatih tanpa satu pun gambar
+  latar (`645 images, 0 backgrounds`), jadi ia *wajib* mengeluarkan salah satu
+  kelasnya untuk apa pun yang dilihatnya. Kalau frame kosong tidak masuk set,
+  kelemahan terbesar model tidak akan terukur sama sekali.
+
+Matikan perekaman setelah sesi selesai (`CV_CAPTURE_DIR=` kosong).
+
+### b. Labeli
+
+Isi dua field yang masih `null` di tiap sidecar:
+
+```json
+"truth_label": "botol_plastik",
+"truth_category": "inorganic"
+```
+
+Frame tanpa sampah: biarkan keduanya `null`, lalu tambahkan `"labeled": true`.
+
+Sebagian besar tebakan model sudah benar, jadi ini kerja **membenarkan**, bukan
+mengetik dari nol.
+
+### c. Ukur
+
+```bash
+python training/eval_field.py training/field_eval           # nilai prediksi tersimpan
+python training/eval_field.py training/field_eval --rerun   # klasifikasi ulang pakai CV_MODE saat ini
+```
+
+`--rerun` adalah cara membandingkan model baru terhadap set yang sama.
+
+Laporannya memisahkan akurasi **kategori** (menentukan tong mana yang dibuka)
+dari akurasi **nama objek** (menentukan label di layar dan soal kuis), karena
+keduanya gagal dengan cara berbeda dan hanya satu yang menentukan sampahnya
+masuk tong yang benar. Dilaporkan juga perilaku pada frame kosong.
+
+> Bila laporan menyebut sebagian frame *dijawab model cadangan*, angkanya
+> mencampur dua model. Periksa `/health` dulu — kemungkinan besar kuota cloud
+> sudah habis dan yang sebenarnya diukur adalah `best.pt`.
+
+### d. Jangan lakukan ini
+
+- **Melatih ulang YOLO dengan dataset publik lain.** Sudah dicoba tiga kali
+  (`bunnybin-named`, `bunnybin-buah`, `bunnybin-combined`); tiap kali metriknya
+  bagus dan hasil lapangannya tidak.
+- **Memotret ribuan gambar manual** sebelum punya angka dasar. Ukur dulu, baru
+  putuskan data apa yang benar-benar kurang.

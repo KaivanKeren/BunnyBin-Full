@@ -38,6 +38,15 @@ export interface CvDetection {
   confidence: number // 0-1
   bbox: [number, number, number, number] | null
   model_version: string
+  // Jawaban ini datang dari model CADANGAN, bukan jalur utama — paling sering
+  // karena kuota API cloud habis (free tier: 10 permintaan/menit, sementara loop
+  // pindai memanggil ~13 kali/menit, jadi ini keadaan normal, bukan kasus tepi).
+  //
+  // Opsional supaya klien lama & mock tidak perlu diubah serentak; `?? false`
+  // di tempat pemakaian memperlakukan "tidak dikirim" sebagai "tidak terdegradasi".
+  degraded?: boolean
+  // "kuota" | "jaringan" | "diblokir" | "skema" | "tanpa-cadangan"
+  degraded_reason?: string | null
 }
 export interface ICvClient {
   // imageBase64 diambil dari kamera device kiosk

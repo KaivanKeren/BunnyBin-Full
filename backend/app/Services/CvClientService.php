@@ -12,7 +12,13 @@ class CvClientService
     public function classify(string $imageBase64): CvResult
     {
         try {
-            $response = Http::timeout(10)
+            // 30 dtk, bukan 10: di CV_MODE=vlm satu klasifikasi adalah panggilan
+            // jaringan ke model cloud, bukan inferensi lokal milidetik. Lapisannya
+            // harus mengecil ke dalam — httpx 12 dtk di CV service < 30 dtk di sini
+            // < klien axios kiosk yang tak berbatas — supaya jaringan lambat
+            // berakhir di model lokal cadangan, bukan diputus dari luar sebelum
+            // cadangan itu sempat dicoba.
+            $response = Http::timeout(30)
                 ->retry(2, 500, when: $this->worthRetrying(...), throw: false)
                 // CV service menolak /classify tanpa header ini (401). Nilainya
                 // harus sama dengan CV_INTERNAL_TOKEN di sisi FastAPI.

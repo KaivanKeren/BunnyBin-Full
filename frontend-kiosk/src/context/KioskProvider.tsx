@@ -32,7 +32,12 @@ import {
 import quizBankRaw from '@/mocks/quizBank.json'
 import { KioskContext, type KioskApi } from './kioskContext'
 
-const SCAN_TIMEOUT_MS = 10000
+// 15 dtk, bukan 10: sejak CV_MODE=gemini, satu klasifikasi bisa memakan hingga
+// 10 dtk sebelum layanan menyerah dan menjatuhkannya ke model lokal (batas itu
+// tidak bisa dikecilkan — Gemini menolak deadline di bawah 10 dtk). Pada jendela
+// 10 dtk, kiosk menyerah lebih dulu dan cadangan lokal tak pernah sempat
+// menjawab: anak dilempar ke mode manual padahal jaring pengamannya ada.
+const SCAN_TIMEOUT_MS = 15000
 const SUCCESS_MS = 5000
 const ERROR_AUTO_MS = 9000
 const POLL_MS = 2000

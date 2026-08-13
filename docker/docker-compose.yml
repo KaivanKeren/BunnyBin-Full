@@ -34,13 +34,61 @@ services:
     # Rahasia (ROBOFLOW_API_KEY) dimuat dari docker/.env.roboflow yang GITIGNORED —
     # jangan hardcode di file ini. Setup: `cp .env.roboflow.example .env.roboflow`
     # lalu isi API key. required:false agar `up` tetap jalan tanpa file (mode dummy).
+    #
+    # ⚠ PRESEDENSI — sumber kebingungan yang sudah pernah memakan waktu:
+    #
+    #   blok `environment:` di bawah  MENGALAHKAN  isi `env_file:` ini.
+    #
+    # Jadi `CV_MODE=roboflow` di dalam .env.roboflow TIDAK PERNAH berlaku: ia
+    # selalu ditimpa oleh `CV_MODE: ${CV_MODE:-...}`. Selama defaultnya kebetulan
+    # juga `roboflow`, penimpaan itu tak terlihat — begitu defaultnya berubah,
+    # container diam-diam berjalan di mode yang berbeda dari isi berkasnya.
+    #
+    # Yang benar-benar menentukan adalah interpolasi `${VAR}`, dan sumbernya
+    # adalah **docker/.env** (berkas env milik Compose) atau environment shell.
+    # Untuk mengubah mode/kunci, edit docker/.env — BUKAN .env.roboflow.
     env_file:
       - path: .env.roboflow
         required: false
     environment:
-      CV_MODE: ${CV_MODE:-roboflow}
+      # Default SENGAJA bukan roboflow lagi. Model
+      # `deteksi-sampah-organik-anorganik/3` mengeluarkan nama kelas
+      # "Sampah Organik"/"Sampah Anorganik" — itu KATEGORI, bukan nama benda.
+      # Kiosk lalu menampilkan "Sampah Anorganik" untuk sebuah botol, dan tidak
+      # ada satu pun benda spesifik yang bisa dicocokkan ke soal kuis
+      # (lihat frontend-kiosk/src/lib/labelToQuiz.ts), sehingga SETIAP deteksi
+      # jatuh ke soal acak dalam kategori. Itu bukan kasus tepi: itu perilaku
+      # yang didapat siapa pun yang menjalankan `docker compose up` apa adanya.
+      #
+      # Penggantinya `real`, bukan `gemini`. Alasannya bukan mutu melainkan
+      # kemampuan berjalan: mode gemini MENOLAK START tanpa GEMINI_API_KEY, jadi
+      # menjadikannya default akan merusak `up` untuk semua orang yang belum
+      # punya kunci. `real` memakai bobot yang sudah ter-mount di /model,
+      # mengeluarkan nama objek (botol_plastik, kulit_buah, …), dan tidak
+      # menyentuh jaringan sama sekali. Sejalan pula dengan docker-compose.prod.yml
+      # yang memang sudah default `real`.
+      #
+      # Untuk memakai cloud: CV_MODE=gemini GEMINI_API_KEY=... docker compose up
+      CV_MODE: ${CV_MODE:-real}
       CV_MODEL_PATH: ${CV_MODEL_PATH:-/model/best.pt}
-      ROBOFLOW_MODEL_ID: ${ROBOFLOW_MODEL_ID:-deteksi-sampah-organik-anorganik/3}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash}
+      # CV_MODE=openai: penyedia apa pun berprotokol /chat/completions —
+      # Groq (free tier 30/menit·14.400/hari, model open-weight), Ollama lokal,
+      # OpenRouter. Lihat cv-service-fastapi/.env.example untuk nilai per penyedia.
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-}
+      OPENAI_REASONING_EFFORT: ${OPENAI_REASONING_EFFORT:-}
+      VLM_MAX_TPM: ${VLM_MAX_TPM:-0}
+      VLM_MAX_IMAGE_PX: ${VLM_MAX_IMAGE_PX:-512}
+      # Pengendali kuota (berlaku untuk mode vlm/gemini/openai). Tanpa baris ini
+      # container selalu memakai default kode (10 rpm) — nilai yang benar untuk
+      # free tier Gemini tapi memboroskan dua pertiga jatah Groq (30 rpm).
+      VLM_MAX_RPM: ${VLM_MAX_RPM:-10}
+      VLM_CACHE_TTL_S: ${VLM_CACHE_TTL_S:-15}
+      VLM_TIMEOUT_S: ${VLM_TIMEOUT_S:-12}
+      ROBOFLOW_MODEL_ID: ${ROBOFLOW_MODEL_ID:-}
       # Set di docker/.env (gitignored), pakai nilai yang SAMA dengan
       # CV_INTERNAL_TOKEN di backend/.env.
       #

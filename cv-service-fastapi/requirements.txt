@@ -4,5 +4,11 @@ pydantic-settings
 pillow
 python-multipart
 httpx
+anthropic
+google-genai
 # real mode: install via requirements-real.txt (ultralytics, opencv)
 # roboflow mode: httpx already included above, Roboflow Inference server runs separately
+# vlm mode (Claude)  : anthropic
+# gemini mode        : google-genai
+#   Keduanya memakai bobot real mode sebagai CADANGAN saat API tak terjangkau, jadi
+#   untuk jaring pengaman itu pasang requirements-real.txt juga.

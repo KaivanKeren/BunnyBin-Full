@@ -101,19 +101,23 @@ it('counts successful logins too, so bcrypt work stays bounded', function () {
 
 it('keeps the api baseline looser than the cv-classify limiter for kiosk tokens', function () {
     // Kedua limiter berlaku bersamaan di /cv/classify dan yang paling ketat yang
-    // menang. Kalau baseline 'api' turun sampai atau di bawah 600/menit, loop
-    // deteksi kiosk (5 fps = 300/menit, dengan ruang untuk lonjakan) mulai
-    // kena 429 DAN limiter cv-classify berubah jadi konfigurasi mati yang tak
-    // pernah tercapai. Test ini menjaga urutan itu tanpa perlu menembak 600
-    // request sungguhan.
+    // menang. Kalau baseline 'api' turun sampai atau di bawah batas cv-classify,
+    // pemindaian kiosk mulai kena 429 DAN limiter cv-classify berubah jadi
+    // konfigurasi mati yang tak pernah tercapai.
+    //
+    // Kedua batas dibaca dari limiter yang sesungguhnya, bukan ditembak sebagai
+    // angka tetap: batas cv-classify sudah pernah berubah sekali (600 -> 60 saat
+    // kiosk pindah ke CV_MODE=vlm), dan versi lama test ini tetap hijau sambil
+    // berhenti menjaga apa pun karena angkanya ditulis langsung di sini.
     $unit = Unit::factory()->for(School::factory())->create();
 
     $request = Request::create('/api/cv/classify', 'POST');
     $request->setUserResolver(fn () => $unit);
 
-    $limit = call_user_func(RateLimiter::limiter('api'), $request);
+    $baseline = call_user_func(RateLimiter::limiter('api'), $request);
+    $cvClassify = call_user_func(RateLimiter::limiter('cv-classify'), $request);
 
-    expect($limit->maxAttempts)->toBeGreaterThan(600);
+    expect($baseline->maxAttempts)->toBeGreaterThan($cvClassify->maxAttempts);
 });
 
 it('applies a baseline throttle to authenticated admin API routes', function () {

@@ -2,6 +2,7 @@
 import { motion } from 'framer-motion'
 import { ScanLine, Camera, CameraOff, Crosshair } from 'lucide-react'
 import BunnyMascot from '@/components/BunnyMascot'
+import { DegradedBadge } from '@/components/DegradedBadge'
 import { useKiosk } from '@/context/kioskContext'
 import { prettyLabel } from '@/lib/prettyLabel'
 
@@ -255,6 +256,10 @@ export default function ScanningScreen() {
               </div>
             )}
             <ConfidenceBar confidence={detection!.confidence} category={detection!.category} />
+            <DegradedBadge
+              degraded={detection!.degraded}
+              reason={detection!.degraded_reason}
+            />
           </motion.div>
         )}
 
