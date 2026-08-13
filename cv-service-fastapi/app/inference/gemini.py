@@ -84,6 +84,8 @@ class GeminiVlm(VlmClassifier):
         thinking_level: str = "",
         max_rpm: int = 0,
         cache_ttl_s: float = 0.0,
+        max_tpm: int = 0,
+        max_image_px: int = 0,
     ):
         try:
             from google import genai
@@ -94,7 +96,8 @@ class GeminiVlm(VlmClassifier):
             ) from e
 
         super().__init__(
-            version=model, fallback=fallback, max_rpm=max_rpm, cache_ttl_s=cache_ttl_s
+            version=model, fallback=fallback, max_rpm=max_rpm, cache_ttl_s=cache_ttl_s,
+            max_tpm=max_tpm, max_image_px=max_image_px,
         )
         self._types = types
         self._model = model
@@ -154,6 +157,10 @@ class GeminiVlm(VlmClassifier):
             if is_quota_error(e):
                 raise QuotaExhausted(str(e), retry_after_seconds(e)) from e
             raise
+
+        meta = getattr(response, "usage_metadata", None)
+        if meta is not None:
+            self._note_usage(getattr(meta, "total_token_count", 0))
 
         # Jalur pemblokiran 1: permintaannya yang ditolak — tidak ada kandidat sama sekali.
         feedback = getattr(response, "prompt_feedback", None)

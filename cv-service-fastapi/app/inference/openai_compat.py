@@ -84,14 +84,19 @@ class OpenAiCompatVlm(VlmClassifier):
         max_rpm: int = 0,
         cache_ttl_s: float = 0.0,
         json_mode: str = "schema",
+        max_tpm: int = 0,
+        max_image_px: int = 0,
+        reasoning_effort: str = "",
     ):
         import httpx  # dependensi inti requirements.txt — selalu ada
 
         super().__init__(
-            version=model, fallback=fallback, max_rpm=max_rpm, cache_ttl_s=cache_ttl_s
+            version=model, fallback=fallback, max_rpm=max_rpm, cache_ttl_s=cache_ttl_s,
+            max_tpm=max_tpm, max_image_px=max_image_px,
         )
         self._model = model
         self._json_mode = json_mode
+        self._reasoning_effort = reasoning_effort
 
         headers = {}
         if api_key:
@@ -103,8 +108,9 @@ class OpenAiCompatVlm(VlmClassifier):
             timeout=timeout,
         )
         log.info(
-            "OpenAI-compat siap: base=%s, model=%s, auth=%s, json=%s, cadangan=%s",
+            "OpenAI-compat siap: base=%s, model=%s, auth=%s, json=%s, thinking=%s, cadangan=%s",
             base_url, model, "ya" if api_key else "tanpa-kunci", json_mode,
+            reasoning_effort or "bawaan model",
             type(fallback).__name__ if fallback else "TIDAK ADA",
         )
 
@@ -129,6 +135,16 @@ class OpenAiCompatVlm(VlmClassifier):
                 },
             ],
         }
+        # Model penalar (Qwen, gpt-oss) menulis blok <think> panjang sebelum
+        # menjawab. TERUKUR terhadap Groq: 677 token thinking untuk JSON yang
+        # isinya ~40 token, dan 1,44 dtk latensi. Dimatikan: 46 token, 0,22 dtk.
+        #
+        # Untuk klasifikasi dua kelas, penalaran itu tidak membeli apa pun —
+        # sementara token per menit adalah batas yang sungguh habis lebih dulu,
+        # dan latensi langsung memakan jendela pindai anak.
+        if self._reasoning_effort:
+            body["reasoning_effort"] = self._reasoning_effort
+
         if self._json_mode == "schema":
             # SCHEMA dipakai apa adanya: `additionalProperties: false` yang
             # ditolak Gemini justru DIWAJIBKAN oleh json_schema strict di sini.
@@ -165,6 +181,13 @@ class OpenAiCompatVlm(VlmClassifier):
             raise RuntimeError(f"HTTP {response.status_code}: {response.text[:200]}")
 
         data = response.json()
+
+        # Biaya SEBENARNYA panggilan ini. Inilah yang membuat rem token berhenti
+        # menebak: untuk beban gambar, token per menit adalah batas yang
+        # sungguh-sungguh habis lebih dulu, dan besarnya berbeda tiap frame.
+        usage = data.get("usage") or {}
+        self._note_usage(usage.get("total_tokens"))
+
         choices = data.get("choices") or []
         if not choices:
             raise RuntimeError("balasan tanpa choices")

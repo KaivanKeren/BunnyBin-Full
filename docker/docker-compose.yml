@@ -79,6 +79,9 @@ services:
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-}
+      OPENAI_REASONING_EFFORT: ${OPENAI_REASONING_EFFORT:-}
+      VLM_MAX_TPM: ${VLM_MAX_TPM:-0}
+      VLM_MAX_IMAGE_PX: ${VLM_MAX_IMAGE_PX:-512}
       # Pengendali kuota (berlaku untuk mode vlm/gemini/openai). Tanpa baris ini
       # container selalu memakai default kode (10 rpm) — nilai yang benar untuk
       # free tier Gemini tapi memboroskan dua pertiga jatah Groq (30 rpm).

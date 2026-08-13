@@ -8,6 +8,7 @@ benar-benar khas — cara ia menolak permintaan.
 
 import json
 from dataclasses import dataclass, field
+from io import BytesIO
 
 import pytest
 from PIL import Image
@@ -54,9 +55,12 @@ class FakeVlm(VlmClassifier):
         fallback=None,
         max_rpm: int = 0,
         cache_ttl_s: float = 0.0,
+        max_tpm: int = 0,
+        max_image_px: int = 0,
     ):
         super().__init__(
-            version="fake", fallback=fallback, max_rpm=max_rpm, cache_ttl_s=cache_ttl_s
+            version="fake", fallback=fallback, max_rpm=max_rpm, cache_ttl_s=cache_ttl_s,
+            max_tpm=max_tpm, max_image_px=max_image_px,
         )
         self._text = text
         self._error = error
@@ -780,3 +784,210 @@ def test_openai_content_berbentuk_daftar_bagian(frame):
 
     assert d.label == "Kulit Pisang"
     assert d.confidence == 0.70
+
+
+# ── Batas TOKEN (TPM) & pengecilan gambar ─────────────────────────────────────
+#
+# Pelajaran dari lapangan: untuk beban GAMBAR, yang habis lebih dulu adalah token
+# per menit, BUKAN permintaan per menit. Terukur di Groq — plafon 30 rpm, tapi
+# TPM 8.000; rem berbasis permintaan yang disetel 25 tidak pernah aktif sekali pun
+# sementara 429 tetap datang.
+
+
+GROQ_429 = (
+    "429: {\"error\":{\"message\":\"Rate limit reached for model "
+    "`qwen/qwen3.6-27b` in organization `org_x` service tier `on_demand` on "
+    "tokens per minute (TPM): Limit 8000, Used 4314, Requested 1500\"}}"
+)
+
+
+class TokenReportingVlm(FakeVlm):
+    """Penyedia tiruan yang melaporkan pemakaian token, seperti Groq."""
+
+    def __init__(self, tokens: int, **kwargs):
+        super().__init__(payload("inorganic", "Botol Plastik", "tinggi"), **kwargs)
+        self._tokens = tokens
+
+    def _ask(self, image_jpeg: bytes) -> str:
+        self._note_usage(self._tokens)
+        return super()._ask(image_jpeg)
+
+
+def test_plafon_tpm_dipelajari_dari_pesan_429(frame):
+    # Angka plafon TIDAK ditebak maupun dikonfigurasi: penyedia menyebutkannya
+    # sendiri saat menolak, dan itu satu-satunya sumber yang tidak bisa usang.
+    clf = FakeVlm(error=FakeApiError(429, "", GROQ_429), fallback=StubFallback())
+    assert clf._max_tpm == 0
+
+    clf.classify(frame)
+
+    assert clf._max_tpm == 8000
+    assert clf.health()["max_tpm"] == 8000
+
+
+def test_rem_token_menahan_sebelum_penyedia_menolak(frame):
+    # Inti perbaikannya. Dengan plafon 8.000 dan ~1.400 token per frame, jatah
+    # sesungguhnya ±5 panggilan/menit — bukan 25 seperti dugaan rem lama.
+    clf = TokenReportingVlm(1400, fallback=StubFallback(), max_tpm=8000, max_rpm=100)
+
+    results = [clf.classify(noisy(i)) for i in range(8)]
+
+    # 8000 * 0.85 = 6800 anggaran; berhenti sebelum 1400 berikutnya melewatinya.
+    assert clf.stats.calls == 4
+    assert clf.stats.skipped_tokens == 4
+    assert results[-1].degraded_reason == "batas-token"
+    # Rem lama (permintaan/menit) tidak pernah tersentuh — persis gejala lapangan.
+    assert clf.stats.skipped_rate == 0
+
+
+def test_penolakan_429_ikut_membakar_jatah_token(frame):
+    # Permintaan yang DITOLAK tetap memakai sebagian jatah. Tanpa dicatat, rem
+    # mengira jatahnya masih utuh dan langsung menembak lagi begitu pemutus
+    # tertutup — menghasilkan 429 berikutnya.
+    clf = FakeVlm(error=FakeApiError(429, "", GROQ_429), fallback=StubFallback())
+
+    clf.classify(frame)
+
+    assert clf._tokens_recent() > 0
+
+
+def test_perkiraan_token_memakai_yang_terbesar_bukan_rata_rata(frame):
+    # Meleset ke bawah berarti 429, yang membekukan jalur cloud untuk SEMUA frame
+    # sesudahnya — bukan cuma frame yang meleset itu.
+    clf = TokenReportingVlm(500, max_tpm=100_000, max_rpm=0)
+    clf.classify(noisy(1))
+    clf._tokens = 3000
+    clf.classify(noisy(2))
+
+    assert clf._token_estimate() == 3000
+
+
+def test_jendela_token_bergeser_setelah_semenit(monkeypatch):
+    import app.inference.vlm as vlm
+
+    now = [1000.0]
+    monkeypatch.setattr(vlm.time, "monotonic", lambda: now[0])
+
+    clf = TokenReportingVlm(1400, fallback=StubFallback(), max_tpm=8000)
+    for i in range(6):
+        clf.classify(noisy(i))
+    assert clf.stats.skipped_tokens > 0
+
+    now[0] += 61.0  # jendela lewat — jatah token pulih penuh
+    before = clf.stats.calls
+    clf.classify(noisy(99))
+    assert clf.stats.calls == before + 1
+
+
+def test_rem_token_mati_saat_plafon_belum_diketahui(frame):
+    # Sebelum 429 pertama, plafonnya memang tidak diketahui. Menebak-nebak di sini
+    # akan menahan panggilan yang sebenarnya masih boleh lewat.
+    clf = TokenReportingVlm(5000, max_tpm=0, max_rpm=0)
+
+    for i in range(10):
+        clf.classify(noisy(i))
+
+    assert clf.stats.calls == 10
+    assert clf.stats.skipped_tokens == 0
+
+
+def test_gambar_dikecilkan_sebelum_dikirim():
+    # Biaya token naik seiring luas piksel, dan token per menit adalah batas yang
+    # sungguh habis lebih dulu — jadi resolusi berlebih dibayar sebagai lebih
+    # sedikit deteksi yang muat dalam satu menit.
+    seen = {}
+
+    class Capturing(FakeVlm):
+        def _ask(self, image_jpeg: bytes) -> str:
+            seen["size"] = Image.open(BytesIO(image_jpeg)).size
+            return payload("inorganic", "Botol", "tinggi")
+
+    clf = Capturing(max_image_px=512)
+    clf.classify(Image.new("RGB", (1920, 1080), (100, 100, 100)))
+
+    assert max(seen["size"]) == 512
+    # Rasio aspek dipertahankan — meregangkan gambar mengubah bentuk benda.
+    assert seen["size"] == (512, 288)
+
+
+def test_gambar_kecil_tidak_diperbesar():
+    seen = {}
+
+    class Capturing(FakeVlm):
+        def _ask(self, image_jpeg: bytes) -> str:
+            seen["size"] = Image.open(BytesIO(image_jpeg)).size
+            return payload("inorganic", "Botol", "tinggi")
+
+    Capturing(max_image_px=512).classify(Image.new("RGB", (320, 240)))
+
+    assert seen["size"] == (320, 240)
+
+
+def test_cadangan_tetap_menerima_gambar_ASLI():
+    # YoloClassifier harus dijalankan pada resolusi latihnya. Mengirimkan salinan
+    # yang sudah dikecilkan ke cadangan akan menurunkan akurasinya diam-diam,
+    # persis saat jalur utama sedang bermasalah.
+    seen = {}
+
+    class SizeCheckingFallback(Classifier):
+        @property
+        def model_loaded(self) -> bool:
+            return True
+
+        def classify(self, image):
+            seen["size"] = image.size
+            return Detection("inorganic", 0.9, None, "best", label="botol_plastik")
+
+    clf = FakeVlm(
+        error=TimeoutError("putus"), fallback=SizeCheckingFallback(), max_image_px=512
+    )
+    clf.classify(Image.new("RGB", (1920, 1080)))
+
+    assert seen["size"] == (1920, 1080)
+
+
+def test_openai_reasoning_effort_dikirim_saat_diminta(frame):
+    # TERUKUR terhadap Groq: thinking bawaan menulis 677 token demi jawaban JSON
+    # yang isinya ~40 token (1,44 dtk). Dengan "none": 46 token, 0,22 dtk.
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(200, json=openai_reply(payload("inorganic", "Kaleng", "tinggi")))
+
+    make_openai(handler, reasoning_effort="none").classify(frame)
+
+    assert seen["body"]["reasoning_effort"] == "none"
+
+
+def test_openai_reasoning_effort_tidak_dikirim_secara_bawaan(frame):
+    # Server yang tidak mengenal parameter ini membalas 400, dan penolakan itu
+    # berakhir sebagai kegagalan SENYAP — semua frame dilayani model cadangan.
+    # Jadi ia hanya dikirim bila diminta eksplisit.
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(200, json=openai_reply(payload("inorganic", "Kaleng", "tinggi")))
+
+    make_openai(handler).classify(frame)
+
+    assert "reasoning_effort" not in seen["body"]
+
+
+def test_openai_melaporkan_pemakaian_token_ke_rem(frame):
+    # `usage` dari penyedia inilah yang membuat rem token berhenti menebak.
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                **openai_reply(payload("organic", "Daun", "tinggi")),
+                "usage": {"total_tokens": 1857},
+            },
+        )
+
+    clf = make_openai(handler)
+    clf.classify(frame)
+
+    assert clf._tokens_recent() == 1857
+    assert clf.health()["token_estimate"] == 1857

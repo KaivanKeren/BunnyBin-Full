@@ -207,6 +207,28 @@ class Settings(BaseSettings):
     # model lokal dan ditandai degraded, sama seperti jalur kuota habis.
     # 0 = matikan rem (mis. saat billing aktif dan batasnya jauh lebih tinggi).
     vlm_max_rpm: int = 10
+    # Plafon TOKEN per menit. Untuk beban GAMBAR, inilah batas yang benar-benar
+    # habis lebih dulu — bukan jumlah permintaan.
+    #
+    # Terukur di Groq free tier: 30 permintaan/menit diizinkan, tapi TPM cuma
+    # 8.000. Satu frame 640px bernilai ~1.400 token, jadi jatah sesungguhnya ±5
+    # permintaan/menit. Rem berbasis permintaan yang disetel 25 tidak pernah
+    # aktif sekali pun; ia menghitung satuan yang tak pernah jadi batasnya.
+    #
+    # 0 = BELUM DIKETAHUI, dan itu default yang disengaja: nilainya dipelajari
+    # otomatis dari pesan 429 pertama, yang menyebutkan plafonnya sendiri
+    # ("...tokens per minute (TPM): Limit 8000"). Angka dari penyedia selalu
+    # lebih dipercaya daripada angka yang ditulis manusia lalu usang diam-diam.
+    # Isi manual hanya bila ingin menahan diri SEBELUM 429 pertama terjadi.
+    vlm_max_tpm: int = 0
+    # Sisi terpanjang gambar yang dikirim ke penyedia. Biaya token naik seiring
+    # luas piksel, jadi resolusi berlebih dibayar langsung sebagai lebih sedikit
+    # deteksi yang muat dalam satu menit. 512 px lebih dari cukup untuk
+    # membedakan botol dari kulit pisang. 0 = kirim apa adanya.
+    #
+    # Hanya salinan yang dikirim yang dikecilkan; model cadangan tetap menerima
+    # gambar asli, karena YOLO harus dijalankan pada resolusi latihnya.
+    vlm_max_image_px: int = 512
     # Umur cache frame. Selama satu pemindaian anak memegang benda yang sama, dan
     # kiosk mengirim 2-3 frame yang secara persepsi identik. Nilai ini kira-kira
     # sepanjang SCAN_TIMEOUT_MS kiosk (15 dtk), sehingga satu sortiran normal
@@ -245,6 +267,20 @@ class Settings(BaseSettings):
     #            bila server menolak response_format dengan 400 — tandanya SEMUA
     #            panggilan tiba-tiba dilayani model cadangan.
     openai_json_mode: Literal["schema", "off"] = "schema"
+    # Kendali "thinking" untuk model penalar (Qwen, gpt-oss). TERUKUR terhadap
+    # Groq + qwen3.6-27b: bawaan model menulis 677 token penalaran demi jawaban
+    # JSON yang isinya ~40 token — 1,44 dtk. Dengan "none": 46 token, 0,22 dtk.
+    #
+    # Untuk klasifikasi dua kelas, penalaran panjang tidak membeli akurasi apa
+    # pun; ia hanya membakar TPM (batas yang sungguh habis lebih dulu) dan
+    # memakan jendela pindai anak.
+    #
+    # KOSONG = jangan kirim parameternya sama sekali. Itu default yang disengaja:
+    # server yang tidak mengenalinya membalas 400, dan penolakan itu berakhir
+    # sebagai kegagalan SENYAP — layanan tetap hidup, tiap panggilan gagal, lalu
+    # semuanya dilayani model cadangan. Isi hanya untuk penyedia yang sudah
+    # terbukti menerimanya (Groq: "none").
+    openai_reasoning_effort: str = ""
 
 
 @lru_cache

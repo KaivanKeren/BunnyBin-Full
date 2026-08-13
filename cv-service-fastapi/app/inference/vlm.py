@@ -76,6 +76,30 @@ QUOTA_COOLDOWN_MAX_S = 900.0  # atap saat yang habis adalah kuota HARIAN
 # angkanya sendiri, itu selalu lebih baik daripada tebakan backoff kita.
 _RETRY_DELAY_RE = re.compile(r'"retryDelay"\s*:\s*"(\d+(?:\.\d+)?)s"')
 
+# ── BATAS TOKEN (TPM) ─────────────────────────────────────────────────────────
+# Pelajaran mahal dari lapangan: untuk beban GAMBAR, yang habis lebih dulu
+# hampir selalu token per menit, BUKAN permintaan per menit.
+#
+# Terukur di Groq free tier: plafon 30 permintaan/menit, tapi TPM hanya 8.000.
+# Satu frame kiosk bernilai ~1.400 token, jadi jatah sesungguhnya ±5 permintaan
+# per menit. Rem berbasis jumlah permintaan yang disetel 25 tidak pernah aktif
+# sekali pun — ia menghitung satuan yang tidak pernah menjadi batasnya.
+#
+# Angka plafonnya TIDAK ditebak. Penyedia menyebutkannya sendiri di dalam pesan
+# 429, dan itu jauh lebih dipercaya daripada nilai yang ditulis manusia di .env
+# lalu usang diam-diam saat penyedia mengubah kuota:
+#
+#   "Rate limit reached ... on tokens per minute (TPM): Limit 8000, Used 4314"
+_TPM_LIMIT_RE = re.compile(r"tokens per minute \(TPM\):\s*Limit\s*(\d+)", re.I)
+# Dipakai sebelum ada satu pun panggilan sukses yang bisa diukur. Sengaja agak
+# tinggi: menahan diri terlalu awal hanya membuat satu frame dilayani model
+# lokal, sedangkan menembak terlalu berani menghasilkan 429 yang membekukan
+# jalur cloud untuk SEMUA frame berikutnya.
+TOKEN_ESTIMATE_DEFAULT = 1500
+# Sisakan ruang di bawah plafon. Perkiraan token tidak pernah tepat, dan meleset
+# ke atas berarti 429 — tepat yang sedang dihindari.
+TPM_SAFETY = 0.85
+
 
 class QuotaExhausted(RuntimeError):
     """Penyedia menolak karena kuota/batas laju (HTTP 429)."""
@@ -123,6 +147,17 @@ def retry_after_seconds(exc: BaseException) -> float | None:
     return float(match.group(1)) if match else None
 
 
+def tpm_limit_from_error(exc: BaseException) -> int | None:
+    """Plafon TPM yang DISEBUTKAN penyedia di dalam pesan 429-nya.
+
+    Ini membuat batas token tidak perlu dikonfigurasi sama sekali: nilai yang
+    benar datang dari penyedia pada saat ia menolak, bukan dari angka di .env
+    yang ditulis sekali lalu usang diam-diam ketika kuotanya berubah.
+    """
+    match = _TPM_LIMIT_RE.search(str(getattr(exc, "details", "")) or str(exc))
+    return int(match.group(1)) if match else None
+
+
 @dataclass
 class VlmStats:
     """Penghitung untuk /health — supaya penurunan mutu bisa dilihat, bukan diduga."""
@@ -132,8 +167,10 @@ class VlmStats:
     fallback: int = 0
     quota_hits: int = 0
     skipped_quota: int = 0  # panggilan yang TIDAK dikirim karena pemutus terbuka
-    skipped_rate: int = 0  # ...karena batas laju sendiri
+    skipped_rate: int = 0  # ...karena batas laju sendiri (permintaan/menit)
+    skipped_tokens: int = 0  # ...karena batas token (TPM) akan terlampaui
     cache_hits: int = 0  # ...karena frame ini sudah pernah dijawab
+    tokens_last_minute: int = 0  # token terpakai dalam 60 dtk terakhir
 
 
 # ── CACHE FRAME ───────────────────────────────────────────────────────────────
@@ -213,6 +250,8 @@ class VlmClassifier(Classifier):
         fallback: Classifier | None = None,
         max_rpm: int = 0,
         cache_ttl_s: float = 0.0,
+        max_tpm: int = 0,
+        max_image_px: int = 0,
     ):
         self._version = version
         self._fallback = fallback
@@ -232,6 +271,15 @@ class VlmClassifier(Classifier):
         # Cache frame — lihat catatan dHash di atas.
         self._cache_ttl = cache_ttl_s
         self._cache: list[tuple[int, float, Detection]] = []
+        # Batas token. 0 = belum diketahui; akan DIPELAJARI dari pesan 429
+        # pertama, karena penyedia menyebutkan plafonnya sendiri di situ.
+        self._max_tpm = max_tpm
+        self._token_events: list[tuple[float, int]] = []
+        # Diisi subclass lewat _note_usage() di dalam _ask(). 0 = penyedia tidak
+        # melaporkan pemakaian, jadi yang dicatat adalah perkiraan.
+        self._last_tokens = 0
+        # Sisi terpanjang gambar yang dikirim ke penyedia. 0 = kirim apa adanya.
+        self._max_image_px = max_image_px
 
     @property
     def model_loaded(self) -> bool:
@@ -247,9 +295,15 @@ class VlmClassifier(Classifier):
         tanpa harus membaca log baris demi baris."""
         return {
             **asdict(self.stats),
+            "tokens_last_minute": self._tokens_recent(),
             "quota_blocked_for_s": round(self.quota_blocked_for, 1),
             "fallback_available": self._fallback is not None,
             "max_rpm": self._max_rpm,
+            # 0 = plafon belum diketahui; terisi sendiri begitu penyedia
+            # menyebutkannya di pesan 429 pertama.
+            "max_tpm": self._max_tpm,
+            "token_estimate": self._token_estimate(),
+            "max_image_px": self._max_image_px,
             "cache_ttl_s": self._cache_ttl,
         }
 
@@ -278,6 +332,51 @@ class VlmClassifier(Classifier):
             log.info("Kuota %s pulih — jalur cloud melayani lagi", self._version)
         self._quota_until = 0.0
         self._quota_backoff = 0.0
+
+    def _note_usage(self, total_tokens: int | None) -> None:
+        """Dipanggil subclass di dalam `_ask()` dengan pemakaian token nyata.
+
+        Ini yang mengubah rem token dari tebakan menjadi ukuran: setelah satu
+        panggilan sukses, biaya sebenarnya per frame diketahui dan tidak perlu
+        diperkirakan lagi.
+        """
+        if isinstance(total_tokens, int) and total_tokens > 0:
+            self._last_tokens = total_tokens
+
+    def _tokens_recent(self) -> int:
+        now = time.monotonic()
+        self._token_events = [(t, n) for t, n in self._token_events if now - t < 60.0]
+        return sum(n for _, n in self._token_events)
+
+    def _token_estimate(self) -> int:
+        """Biaya perkiraan panggilan BERIKUTNYA.
+
+        Dipakai yang TERBESAR dari pemakaian nyata yang tercatat, bukan rata-rata.
+        Frame kiosk berbeda-beda ukurannya, dan meleset ke bawah berarti 429 —
+        yang membekukan jalur cloud untuk semua frame sesudahnya, bukan cuma
+        frame yang meleset itu.
+        """
+        if not self._token_events:
+            return TOKEN_ESTIMATE_DEFAULT
+        return max(n for _, n in self._token_events)
+
+    def _token_limited(self) -> bool:
+        """True bila panggilan berikutnya diperkirakan menembus plafon TPM."""
+        if self._max_tpm <= 0:
+            return False
+        budget = self._max_tpm * TPM_SAFETY
+        return self._tokens_recent() + self._token_estimate() > budget
+
+    def _learn_tpm_limit(self, exc: BaseException) -> None:
+        limit = tpm_limit_from_error(exc)
+        if limit and limit != self._max_tpm:
+            log.warning(
+                "Plafon TPM %s dipelajari dari penyedia: %d token/menit "
+                "(sebelumnya %s). Rem token aktif mulai sekarang — kelebihan "
+                "frame dilayani model lokal alih-alih ditolak 429.",
+                self._version, limit, self._max_tpm or "tidak diketahui",
+            )
+            self._max_tpm = limit
 
     def _rate_limited(self) -> bool:
         """True bila panggilan berikutnya akan melewati batas laju kita sendiri.
@@ -369,8 +468,21 @@ class VlmClassifier(Classifier):
                 log.debug("Frame identik dengan yang sudah dijawab — memakai cache")
                 return cached
 
+        # Kecilkan SALINAN yang dikirim ke penyedia. Biaya token sebuah gambar
+        # naik seiring luas piksel, dan token per menit adalah batas yang
+        # sesungguhnya habis lebih dulu — jadi resolusi berlebih dibayar langsung
+        # sebagai lebih sedikit deteksi yang muat dalam satu menit.
+        #
+        # Yang dikecilkan hanya salinan ini. `image` yang asli tetap utuh untuk
+        # jalur cadangan, karena YoloClassifier harus menerima resolusi yang sama
+        # dengan saat ia dilatih.
+        outgoing = image
+        if self._max_image_px and max(image.size) > self._max_image_px:
+            outgoing = image.copy()
+            outgoing.thumbnail((self._max_image_px, self._max_image_px), Image.LANCZOS)
+
         buf = BytesIO()
-        image.save(buf, format="JPEG", quality=85)
+        outgoing.save(buf, format="JPEG", quality=85)
 
         # Pemutus terbuka: jangan kirim permintaan yang sudah pasti ditolak 429.
         # Melewatinya menghemat satu round-trip gagal di TIAP pemindaian, dan
@@ -387,18 +499,44 @@ class VlmClassifier(Classifier):
                 image, "batas-laju", f"{self._max_rpm} panggilan/menit sudah terpakai"
             )
 
+        # Batas TOKEN. Untuk beban gambar, inilah yang benar-benar habis lebih
+        # dulu — bukan jumlah permintaan. Plafonnya dipelajari dari 429 pertama.
+        if self._token_limited():
+            self.stats.skipped_tokens += 1
+            return self._fall_back(
+                image,
+                "batas-token",
+                f"{self._tokens_recent()}+~{self._token_estimate()} token "
+                f"melewati {self._max_tpm}/menit",
+            )
+
         self.stats.calls += 1
         self._call_times.append(time.monotonic())
+        self._last_tokens = 0
         try:
             text = self._ask(buf.getvalue())
         except Exception as e:  # noqa: BLE001 — apa pun yang gagal, kiosk harus tetap jalan
             detail = f"{type(e).__name__}: {e}"
             if is_quota_error(e):
+                # Pelajari plafonnya SEBELUM membuka pemutus: 429 inilah satu-
+                # satunya tempat penyedia menyebutkan angka sesungguhnya.
+                self._learn_tpm_limit(e)
+                # Permintaan yang ditolak tetap membakar sebagian jatah. Tanpa
+                # dicatat, rem mengira jatahnya masih utuh dan langsung menembak
+                # lagi begitu pemutus tertutup.
+                self._token_events.append((time.monotonic(), self._token_estimate()))
                 self._trip_quota_breaker(e)
                 return self._fall_back(image, "kuota", detail)
             if isinstance(e, ProviderBlocked):
                 return self._fall_back(image, "diblokir", detail)
             return self._fall_back(image, "jaringan", detail)
+
+        # Catat biaya SEBENARNYA bila penyedia melaporkannya; kalau tidak, pakai
+        # perkiraan supaya jendela token tetap bergerak.
+        self._token_events.append(
+            (time.monotonic(), self._last_tokens or self._token_estimate())
+        )
+        self.stats.tokens_last_minute = self._tokens_recent()
 
         # Panggilan berhasil menembus — bila pemutus sempat terbuka, tutup lagi.
         self._reset_quota_breaker()
@@ -447,6 +585,8 @@ class AnthropicVlm(VlmClassifier):
         fallback: Classifier | None = None,
         max_rpm: int = 0,
         cache_ttl_s: float = 0.0,
+        max_tpm: int = 0,
+        max_image_px: int = 0,
     ):
         try:
             from anthropic import Anthropic
@@ -456,7 +596,8 @@ class AnthropicVlm(VlmClassifier):
             ) from e
 
         super().__init__(
-            version=model, fallback=fallback, max_rpm=max_rpm, cache_ttl_s=cache_ttl_s
+            version=model, fallback=fallback, max_rpm=max_rpm, cache_ttl_s=cache_ttl_s,
+            max_tpm=max_tpm, max_image_px=max_image_px,
         )
         self._client = Anthropic(api_key=api_key, timeout=timeout, max_retries=1)
         self._model = model
@@ -492,6 +633,13 @@ class AnthropicVlm(VlmClassifier):
         # Penolakan pengaman datang sebagai HTTP 200 dengan content kosong, BUKAN
         # exception. Membaca content[0] tanpa memeriksa ini akan melempar IndexError
         # pada respons yang sebenarnya sah.
+        usage = getattr(response, "usage", None)
+        if usage is not None:
+            self._note_usage(
+                (getattr(usage, "input_tokens", 0) or 0)
+                + (getattr(usage, "output_tokens", 0) or 0)
+            )
+
         if response.stop_reason == "refusal":
             raise ProviderBlocked("stop_reason=refusal")
 

@@ -55,6 +55,8 @@ def build_classifier(settings: Settings) -> Classifier:
             fallback=build_local_fallback(settings),
             max_rpm=settings.vlm_max_rpm,
             cache_ttl_s=settings.vlm_cache_ttl_s,
+            max_tpm=settings.vlm_max_tpm,
+            max_image_px=settings.vlm_max_image_px,
         )
 
     if settings.cv_mode == "openai":
@@ -79,7 +81,10 @@ def build_classifier(settings: Settings) -> Classifier:
             fallback=build_local_fallback(settings),
             max_rpm=settings.vlm_max_rpm,
             cache_ttl_s=settings.vlm_cache_ttl_s,
+            max_tpm=settings.vlm_max_tpm,
+            max_image_px=settings.vlm_max_image_px,
             json_mode=settings.openai_json_mode,
+            reasoning_effort=settings.openai_reasoning_effort,
         )
 
     if settings.cv_mode == "gemini":
@@ -96,6 +101,8 @@ def build_classifier(settings: Settings) -> Classifier:
             thinking_level=settings.gemini_thinking_level,
             max_rpm=settings.vlm_max_rpm,
             cache_ttl_s=settings.vlm_cache_ttl_s,
+            max_tpm=settings.vlm_max_tpm,
+            max_image_px=settings.vlm_max_image_px,
         )
 
     return DummyClassifier()

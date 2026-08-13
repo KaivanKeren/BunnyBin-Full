@@ -21,6 +21,10 @@ const REASON_TEXT: Record<string, string> = {
   // sudah tersentuh dan sisa frame sengaja dilayani model lokal supaya jatah
   // harian tidak terbakar oleh permintaan yang toh akan ditolak.
   'batas-laju': 'AI sedang dihemat',
+  // Rem berbasis TOKEN. Untuk beban gambar inilah batas yang benar-benar habis
+  // lebih dulu — bukan jumlah permintaan. Dibedakan dari 'batas-laju' supaya
+  // saat menyetel kuota, jelas satuan MANA yang sedang menahan.
+  'batas-token': 'AI sedang dihemat',
   jaringan: 'Internet bermasalah',
   diblokir: 'AI menolak gambar',
   skema: 'Jawaban AI tak terbaca',
