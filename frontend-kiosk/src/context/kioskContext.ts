@@ -20,6 +20,13 @@ export interface KioskApi {
   camera: CameraState
   startCamera: () => void
   stopCamera: () => void
+  /**
+   * Ref callback kontainer preview. Elemen kamera (<video> untuk kamera
+   * virtual, <img> untuk stream MJPEG) dipasang ke dalamnya oleh useCamera —
+   * layar tidak membuat elemennya sendiri, karena pada jalur MJPEG elemen kedua
+   * berarti koneksi kedua ke HP dan DroidCam hanya melayani satu.
+   */
+  attachPreview: (el: HTMLElement | null) => void
   // Debug Panel (§9)
   forcePhase: (phase: Phase) => void
   setNextDetection: (d: CvDetection | null) => void

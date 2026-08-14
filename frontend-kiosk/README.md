@@ -20,10 +20,15 @@ palet warna organic/inorganic, dan ke-5 state.
 ```bash
 npm install
 cp .env.example .env   # sudah ada .env default (mock + debug panel)
-npm run dev            # http://localhost:5173
+
+# Kamera HP — kiosk TIDAK memakai kamera bawaan laptop.
+../scripts/setup-droidcam.sh 10.23.3.187   # alamat tertera di app DroidCam
+
+npm run dev            # http://localhost:5174
 ```
 
-Perintah lain: `npm run build`, `npm run typecheck`, `npm run lint`, `npm run preview`.
+Perintah lain: `npm run build`, `npm run typecheck`, `npm run lint`, `npm run test`,
+`npm run preview`.
 
 ## Arsitektur
 
@@ -36,6 +41,7 @@ src/
 │   ├── index.ts              # factory mock/real (VITE_USE_MOCK)
 │   ├── mock/                 # MockEsp32Client, MockCloudClient, generateDetection, mockControls
 │   └── real/                 # RealEsp32Client, RealCloudClient (stub, K7/K8)
+├── camera/                   # sumber kamera HP: deviceSource (v4l2loopback) + mjpegSource
 ├── machine/kioskReducer.ts   # state machine (§3)
 ├── context/                  # KioskProvider (orchestrator) + hook
 ├── screens/                  # Idle, Scanning, Question, Sorting, Success, Error, FullLock, OfflineBanner
@@ -50,6 +56,16 @@ src/
 Set `VITE_USE_MOCK=false`. `RealEsp32Client`/`RealCloudClient` sudah memetakan ke endpoint
 Laravel; endpoint `POST /api/units/{code}/sort-logs` masih **addendum** (`PRD-Frontend.md` §7),
 perlu ditambahkan di backend (Fase K7) sebelum sinkron nyata.
+
+## Kamera HP
+
+Kiosk memindai dengan kamera HP lewat DroidCam (atau sejenisnya), bukan kamera
+bawaan laptop yang menghadap ke wajah anak. Dua jalur didukung —
+`device` (kamera virtual v4l2loopback) dan `mjpeg` (stream HTTP lewat proxy
+`/camera-proxy`) — dipilih lewat `VITE_CAMERA_SOURCE`.
+
+Penyiapan, tabel path per aplikasi, dan panduan saat bermasalah:
+[`docs/Kamera-HP-Kiosk.md`](../docs/Kamera-HP-Kiosk.md).
 
 ## Alur state (§3)
 

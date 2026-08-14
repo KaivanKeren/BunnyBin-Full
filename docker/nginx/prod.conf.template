@@ -41,6 +41,22 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
+    # Stream kamera HP diteruskan apa adanya ke container kiosk (yang menaruh
+    # alamat HP-nya di CAMERA_STREAM_URL). Location terpisah karena respons
+    # multipart/x-mixed-replace tidak pernah berakhir: dengan buffering menyala
+    # tak satu frame pun keluar, dan dengan read timeout bawaan 60 detik kamera
+    # mati sendiri di tengah jam sekolah.
+    location /camera-proxy/ {
+        proxy_pass http://kiosk:80;
+        proxy_set_header Host $host;
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 24h;
+        proxy_send_timeout 24h;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+    }
+
     location /api { include /etc/nginx/conf.d/php.inc; }
     location /up  { include /etc/nginx/conf.d/php.inc; }
 }
