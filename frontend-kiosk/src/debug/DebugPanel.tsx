@@ -6,6 +6,8 @@ import type { ReactNode } from 'react'
 import { X } from 'lucide-react'
 import type { WasteCategory } from '@/api/contracts'
 import { config } from '@/api/config'
+import { listVideoInputs } from '@/camera/deviceSource'
+import type { VideoInputLike } from '@/camera/pickCameraDevice'
 import { useKiosk } from '@/context/kioskContext'
 import type { Phase } from '@/machine/kioskReducer'
 
@@ -18,6 +20,7 @@ export default function DebugPanel() {
   const [taps, setTaps] = useState(0)
   const [cvCat, setCvCat] = useState<WasteCategory | 'null'>('organic')
   const [cvConf, setCvConf] = useState(0.9)
+  const [videoInputs, setVideoInputs] = useState<VideoInputLike[] | null>(null)
 
   const onHotspot = () => {
     const next = taps + 1
@@ -131,6 +134,69 @@ export default function DebugPanel() {
               >
                 Set (one-shot)
               </button>
+            </Section>
+
+            {/* Kamera. Ada di sini karena kegagalan kamera HP di lapangan hampir
+                selalu bermuara pada satu pertanyaan: apa yang sebenarnya dilihat
+                browser? Daftar di bawah menjawabnya tanpa perlu membuka DevTools
+                di tablet yang tak punya keyboard. */}
+            <Section title="Kamera">
+              <div className="rounded bg-black/40 p-2 leading-relaxed">
+                <div>
+                  status:{' '}
+                  <b className={kiosk.camera.error ? 'text-red-400' : 'text-white'}>
+                    {kiosk.camera.error
+                      ? `error — ${kiosk.camera.error}`
+                      : kiosk.camera.ready
+                        ? 'siap'
+                        : kiosk.camera.isActive
+                          ? 'menghubungkan'
+                          : 'mati'}
+                  </b>
+                </div>
+                <div>
+                  sumber: <b>{kiosk.camera.kind ?? '—'}</b>
+                  {kiosk.camera.isFallback && (
+                    <span className="ml-1 text-amber-300">(kamera bawaan!)</span>
+                  )}
+                </div>
+                <div className="break-all">device: {kiosk.camera.label ?? '—'}</div>
+                <div className="mt-1 border-t border-white/10 pt-1 text-white/60">
+                  mode: {config.camera.source} · pola:{' '}
+                  {config.camera.deviceMatch ?? '(bawaan)'} · stream:{' '}
+                  {config.camera.streamUrl}
+                  {config.camera.streamPath}
+                </div>
+              </div>
+              <div className="mt-1 flex gap-1">
+                <button
+                  onClick={() => kiosk.startCamera()}
+                  className="flex-1 rounded bg-white/15 px-2 py-1 font-semibold hover:bg-white/25"
+                >
+                  Start
+                </button>
+                <button
+                  onClick={() => kiosk.stopCamera()}
+                  className="flex-1 rounded bg-white/15 px-2 py-1 font-semibold hover:bg-white/25"
+                >
+                  Stop
+                </button>
+                <button
+                  onClick={() => void listVideoInputs().then(setVideoInputs)}
+                  className="flex-1 rounded bg-white/15 px-2 py-1 font-semibold hover:bg-white/25"
+                >
+                  Daftar
+                </button>
+              </div>
+              {videoInputs !== null && (
+                <pre className="mt-1 max-h-32 overflow-auto rounded bg-black/40 p-2 text-[10px] leading-tight">
+                  {videoInputs.length
+                    ? videoInputs
+                        .map((d) => `• ${d.label || '(label tersembunyi — izin belum diberikan)'}`)
+                        .join('\n')
+                    : 'tidak ada videoinput terdeteksi'}
+                </pre>
+              )}
             </Section>
 
             <Section title="Simulasi Offline">

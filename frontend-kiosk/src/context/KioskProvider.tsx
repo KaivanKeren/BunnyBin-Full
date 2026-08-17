@@ -554,6 +554,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     camera: camera.state,
     startCamera,
     stopCamera,
+    attachPreview: camera.attachPreview,
     forcePhase,
     setNextDetection,
     setFill,

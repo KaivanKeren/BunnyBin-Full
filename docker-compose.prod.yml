@@ -166,8 +166,18 @@ services:
       context: ./frontend-kiosk
       args:
         VITE_API_URL: ${KIOSK_API_URL:-/api}
+        VITE_CAMERA_SOURCE: ${KIOSK_CAMERA_SOURCE:-auto}
+        VITE_CAMERA_STREAM_PATH: ${KIOSK_CAMERA_STREAM_PATH:-/mjpegfeed?640x480}
+        # Default false di produksi: kiosk yang tidak menemukan kamera HP lebih
+        # baik menolak memindai daripada diam-diam memakai kamera bawaan tablet
+        # yang menghadap ke arah anak, bukan ke sampahnya.
+        VITE_CAMERA_ALLOW_BUILTIN_FALLBACK: ${KIOSK_CAMERA_ALLOW_BUILTIN_FALLBACK:-false}
     restart: unless-stopped
     expose: ['80']
+    environment:
+      # Alamat app kamera di HP — dibaca nginx container ini saat start, jadi
+      # menggantinya cukup `docker compose up -d kiosk`, tanpa build ulang.
+      CAMERA_STREAM_URL: ${KIOSK_CAMERA_STREAM_URL:-http://10.23.3.187:4747}
 
   # Satu-satunya pintu masuk dari luar. Meneruskan /api ke PHP-FPM dan sisanya
   # ke bundle statis sesuai host.

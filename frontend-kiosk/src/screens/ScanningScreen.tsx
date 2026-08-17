@@ -1,6 +1,6 @@
 // src/screens/ScanningScreen.tsx — Live camera + real-time YOLO detection overlay.
 import { motion } from 'framer-motion'
-import { ScanLine, Camera, CameraOff, Crosshair } from 'lucide-react'
+import { ScanLine, Camera, CameraOff, Crosshair, Smartphone, TriangleAlert } from 'lucide-react'
 import BunnyMascot from '@/components/BunnyMascot'
 import { DegradedBadge } from '@/components/DegradedBadge'
 import { useKiosk } from '@/context/kioskContext'
@@ -135,12 +135,37 @@ function ConfidenceBar({ confidence, category }: { confidence: number; category:
   )
 }
 
+/**
+ * Penanda bahwa yang memindai BUKAN kamera HP.
+ *
+ * Kegagalan ini bisu tanpa penanda: kiosk tetap memindai, tetap menjawab, hanya
+ * saja yang dilihatnya kamera bawaan tablet — yang menghadap wajah anak, bukan
+ * sampah di dalam tong. Hasil klasifikasinya jadi acak dan tak seorang pun tahu
+ * sebabnya. Karena itu ia ditampilkan di layar, bukan cuma di console.
+ */
+function FallbackCameraBadge() {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="absolute left-1/2 top-14 z-10 flex -translate-x-1/2 items-center gap-2 rounded-full bg-amber-500/90 px-3 py-1.5 text-xs font-semibold text-black shadow-soft"
+    >
+      <TriangleAlert size={14} />
+      Kamera HP tidak ditemukan — memakai kamera bawaan
+    </motion.div>
+  )
+}
+
 export default function ScanningScreen() {
-  const { state: kioskState, camera, startCamera, liveDetection } = useKiosk()
+  const { state: kioskState, camera, startCamera, attachPreview, liveDetection } = useKiosk()
   // During scanning phase, use liveDetection from the real-time loop.
   // After SCAN_DONE, kioskState.detection has the confirmed detection.
   const detection = kioskState.phase === 'scanning' ? liveDetection : kioskState.detection
   const isCameraActive = camera.isActive
+  const isCameraReady = camera.ready
+  // Sumber yang benar = kamera HP. Kamera bawaan hanya masuk lewat fallback,
+  // dan saat itu terjadi seluruh indikator berubah warna, bukan diam-diam hijau.
+  const usingPhoneCamera = camera.kind !== null && !camera.isFallback
   const hasError = !!camera.error
   const hasDetection = !!detection?.category && detection.confidence > 0
 
@@ -151,24 +176,20 @@ export default function ScanningScreen() {
       exit={{ opacity: 0 }}
       className="relative flex h-full w-full flex-col items-center justify-center overflow-hidden"
     >
-      {/* Camera feed background */}
+      {/* Camera feed background.
+          Kontainer kosong yang DIISI useCamera dengan elemen kameranya sendiri —
+          <video> untuk kamera virtual HP, <img> untuk stream MJPEG. Layar ini
+          sengaja tidak membuat elemennya sendiri: pada jalur MJPEG setiap elemen
+          adalah satu koneksi HTTP ke HP, dan DroidCam hanya melayani satu. */}
       {isCameraActive && (
         <div className="absolute inset-0">
-          <video
-            autoPlay
-            playsInline
-            muted
-            className="h-full w-full object-cover"
-            ref={(el) => {
-              if (el && camera.stream) {
-                el.srcObject = camera.stream
-              }
-            }}
-          />
+          <div ref={attachPreview} className="h-full w-full" />
           {/* Dark overlay for readability */}
           <div className="absolute inset-0 bg-black/30" />
         </div>
       )}
+
+      {camera.isFallback && <FallbackCameraBadge />}
 
       {/* Fallback: animated scanning when no camera */}
       {!isCameraActive && (
@@ -214,19 +235,25 @@ export default function ScanningScreen() {
       <div className="absolute bottom-0 left-0 right-0 flex flex-col items-center gap-3 px-6 pb-6">
         {/* Camera status indicator */}
         <div className="flex items-center gap-2">
-          {isCameraActive ? (
-            <Camera size={16} className="text-green-400" />
+          {isCameraReady ? (
+            usingPhoneCamera ? (
+              <Smartphone size={16} className="text-green-400" />
+            ) : (
+              <Camera size={16} className="text-amber-400" />
+            )
           ) : hasError ? (
             <CameraOff size={16} className="text-red-400" />
           ) : (
             <ScanLine size={16} className="animate-pulse text-inorganic-300" />
           )}
           <span className="text-sm font-medium text-white/80">
-            {isCameraActive
-              ? 'Kamera aktif'
+            {isCameraReady
+              ? usingPhoneCamera
+                ? `Kamera HP aktif — ${camera.label}`
+                : `Kamera bawaan aktif — ${camera.label}`
               : hasError
                 ? `Kamera error: ${camera.error}`
-                : 'Memulai kamera...'}
+                : 'Menghubungkan kamera HP...'}
           </span>
         </div>
 
@@ -291,17 +318,20 @@ export default function ScanningScreen() {
         </div>
       </div>
 
-      {/* Start camera button (shown when camera not active and no error) */}
-      {!isCameraActive && !hasError && (
+      {/* Tombol kamera. Muncul juga SAAT ERROR — sebab paling umum (app DroidCam
+          tertutup, HP terkunci, client di host mati) bisa diperbaiki di tempat
+          dalam hitungan detik, dan tanpa tombol ini operator harus memuat ulang
+          seluruh kiosk hanya untuk mencoba lagi. */}
+      {!isCameraActive && (
         <motion.button
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ delay: 1 }}
+          transition={{ delay: hasError ? 0 : 1 }}
           onClick={() => startCamera()}
           className="absolute right-4 top-14 z-10 flex items-center gap-2 rounded-full bg-black/40 px-3 py-1.5 text-xs text-white backdrop-blur-sm"
         >
           <Camera size={14} />
-          Aktifkan Kamera
+          {hasError ? 'Coba Lagi' : 'Aktifkan Kamera'}
         </motion.button>
       )}
     </motion.div>
